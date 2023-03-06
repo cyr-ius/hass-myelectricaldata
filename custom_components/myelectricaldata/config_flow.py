@@ -106,19 +106,20 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
                 _LOGGER.error(error)
                 errors["base"] = "cannot_connect"
             else:
-                options = {
-                    CONF_AUTH: {CONF_TOKEN: user_input.get(CONF_TOKEN)},
+                opts = {
+                    CONF_AUTH: {
+                        CONF_TOKEN: user_input.get(CONF_TOKEN),
+                        CONF_ECOWATT: user_input.get(CONF_ECOWATT),
+                    }
                 }
                 if b_tempo := user_input[CONF_TEMPO]:
-                    options.update({CONF_CONSUMPTION: {CONF_TEMPO: b_tempo}})
-                if user_input[CONF_PRODUCTION]:
-                    options.update({CONF_PRODUCTION: {CONF_SERVICE: PRODUCTION_DAILY}})
-                if user_input[CONF_CONSUMPTION]:
-                    options.update(
-                        {CONF_CONSUMPTION: {CONF_SERVICE: CONSUMPTION_DAILY}}
-                    )
+                    opts.update({CONF_CONSUMPTION: {CONF_TEMPO: b_tempo}})
+                if user_input.get(CONF_PRODUCTION):
+                    opts.update({CONF_PRODUCTION: {CONF_SERVICE: PRODUCTION_DAILY}})
+                if user_input.get(CONF_CONSUMPTION):
+                    opts.update({CONF_CONSUMPTION: {CONF_SERVICE: CONSUMPTION_DAILY}})
 
-                options = default_settings(options)
+                options = default_settings(opts)
                 return self.async_create_entry(
                     title=f"Linky ({user_input[CONF_PDL]})",
                     data=user_input,
@@ -491,14 +492,26 @@ class EnedisOptionsFlowHandler(OptionsFlow):
 def default_settings(datas: dict[str, Any]):
     """Set default datas if missing."""
     production = datas.get(CONF_PRODUCTION)
-    if production.get(CONF_SERVICE) and len(production.get(CONF_PRICINGS, {})) == 0:
+    if (
+        production
+        and production.get(CONF_SERVICE)
+        and len(production.get(CONF_PRICINGS, {})) == 0
+    ):
         datas[CONF_PRODUCTION][CONF_PRICINGS] = DEFAULT_PRODUCTION
 
     consumption = datas.get(CONF_CONSUMPTION)
-    if consumption.get(CONF_SERVICE) and len(consumption.get(CONF_PRICINGS, {})) == 0:
+    if (
+        consumption
+        and consumption.get(CONF_SERVICE)
+        and len(consumption.get(CONF_PRICINGS, {})) == 0
+    ):
         datas[CONF_CONSUMPTION][CONF_PRICINGS] = DEFAULT_CONSUMPTION
 
-    if consumption.get(CONF_TEMPO) and len(consumption.get(CONF_PRICINGS, {})) == 0:
+    if (
+        consumption
+        and consumption.get(CONF_TEMPO)
+        and len(consumption.get(CONF_PRICINGS, {})) == 0
+    ):
         datas[CONF_CONSUMPTION] = {
             CONF_SERVICE: CONSUMPTION_DETAIL,
             CONF_TEMPO: consumption.get(CONF_TEMPO),
