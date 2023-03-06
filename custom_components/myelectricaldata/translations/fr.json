@@ -1,0 +1,118 @@
+{
+    "config": {
+        "flow_title": "{name}",
+        "step": {
+            "user": {
+                "title": "Enregistre ton compte Enedis Gateway",
+                "description": "L'abonnement Tempo calculera automatique les réduction sur les périodes BLUE/WHITE/RED. (voir options)",
+                "data": {
+                    "pdl": "PDL",
+                    "token": "Jeton",
+                    "ecowatt": "Active le sensor Ecowatt",
+                    "bool_tempo": "Abonnement Tempo",
+                    "production": "Activer la collecte de la production d'énergie",
+                    "consumption": "Activer la collecte de la consommation d'énergie"                  
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Impossible de se connecter",
+            "unknown": "Erreur imprévue"
+        },
+        "abort": {
+            "already_configured": "Service déjà configuré"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Enedis options",
+                "menu_options": {
+                    "authentication": "Authentification",
+                    "production": "Production",
+                    "consumption": "Consommation",
+                    "save": "Sauvegarder & Sortir"
+                }      
+            },            
+            "authentication": {
+                "title": "Authentification",
+                "data": {
+                    "token": "Jeton",
+                    "ecowatt": "Activer le sensor Ecowatt"
+                }
+            },
+            "consumption": {
+                "title": "Consommation",
+                "description": "Sélectionner le service de collecte:\nDaily: valeur journalière\nDetail: valeur heure par heure",
+                "data": {
+                    "service": "Service",
+                    "bool_tempo": "Abonnement Tempo",
+                    "pricing_new_id":"Ajouter une nouvelle tarification"
+                }
+            },
+            "production": {
+                "title": "Production",
+                "description": "Sélectionner le service de collecte:\nDaily: valeur journalière\nDetail: valeur heure par heure",
+                "data": {
+                    "service": "Service",
+                    "pricing_new_id":"Ajouter une nouvelle tarification"
+                }
+            },             
+            "pricings": {
+                "title": "Ajouter une tarification",
+                "description": "Les plages de horaires sont optionnelles. Mais pour leurs usages, merci de mettre le service en mode 'detail'",
+                "data": {
+                    "pricing_name": "Nom",
+                    "pricing_cost": "Tarif",
+                    "pricing_delete": "Effacer cette tarification",
+                    "step_id": "Service",
+                    "pricing_id": "Id",
+                    "BLUE":"Tarif bleu",
+                    "WHITE":"Tarif blanc",
+                    "RED":"Tarif rouge"                                        
+                }
+            },            
+            "rules": {
+                "title": "Ajouter une nouvelle plage horaire",
+                "description":"La plage horaire court de 00h00 à 23h59 par tranche de 30min\n Ex: 01:30:00 à 14:00:00",
+                "data": {
+                    "rule_id": "Id",
+                    "period_id": "Période",
+                    "step_id": "Service",
+                    "rule_start_time":"Heure de début",
+                    "rule_end_time":"Heure de fin",
+                    "rule_delete": "Effacer cette plage horaire"
+                }
+            }
+        },
+        "error": {
+            "syntax_error": "Erreur de syntax",
+            "time_error": "L'heure de début est plus grande que l'heure de fin",
+            "interval_time_error": "Les minutes ne sont pas des multiples de 30min"
+        }        
+    },
+    "selector": {
+        "consumption_choice": {
+          "options": {
+            "daily": "Journalier",
+            "detail": "Détaillé"
+          }
+        },
+        "production_choice": {
+            "options": {
+              "daily": "Journalier",
+              "detail": "Détaillé"
+            }
+        },
+        "pricing_key": {
+            "options": {
+                "Add new pricing": "Ajouter un nouveau tarif"
+            }
+        },
+        "interval_key": {
+            "options": {
+                "Add new pricing": "Ajouter une nouvelle plage"
+            }
+        }             
+    }    
+}

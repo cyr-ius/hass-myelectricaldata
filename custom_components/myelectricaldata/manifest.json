@@ -1,0 +1,12 @@
+{
+  "domain": "myelectricaldata",
+  "name": "MyElectricalData",
+  "config_flow": true,
+  "documentation": "https://github.com/cyr-ius/hass-enedis",
+  "issue_tracker": "https://github.com/cyr-ius/hass-enedis/issues",
+  "requirements": ["myelectricaldatapy==1.5.6"],
+  "dependencies": ["recorder"],
+  "codeowners": ["@cyr-ius"],
+  "iot_class": "cloud_polling",
+  "version": "2.4.0"
+}
