@@ -1,116 +1,104 @@
 {
-  "config": {
-    "flow_title": "{name}",
-    "step": {
-      "user": {
-        "title": "Register Enedis gateway account",
-        "description": "To start the collection, it is necessary to make the settings via the options.",
-        "data": {
-          "pdl": "PDL",
-          "token": "Enedis Gateway Token",
-          "ecowatt": "Enable Ecowatt sensor",
-          "bool_tempo": "Tempo subscription",
-          "production": "Enable daily production sensor",
-          "consumption": "Enable daily consumption sensor"                                     
+    "config": {
+        "flow_title": "{name}",
+        "step": {
+            "user": {
+                "title": "Register Enedis gateway account",
+                "description": "To start the collection, it is necessary to make the settings via the options.",
+                "data": {
+                    "pdl": "pdl",
+                    "token": "token",
+                    "ecowatt": "Enable Ecowatt sensor",
+                    "tempo": "Tempo subscription",
+                    "production": "Enable daily production sensor",
+                    "consumption": "Enable daily consumption sensor"                               
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+            "unknown": "[%key:common::config_flow::error::unknown%]"
+        },
+        "abort": {
+            "already_configured": "[%key:common::config_flow::abort::already_configured_service%]"
         }
-      }
     },
-    "error": {
-      "cannot_connect": "Failed to connect",
-      "unknown": "Unexpected error"
+    "options": {
+        "step": {
+            "init": {
+                "title": "Enedis options",
+                "menu_options": {
+                    "authentication": "Authentication",
+                    "production": "Production",
+                    "consumption": "Consumption",
+                    "save": "Save & Exit"
+                }  
+            },
+            "authentication": {
+                "title": "Authentication",
+                "data": {
+                    "token": "Token",
+                    "ecowatt": "Enable Ecowatt sensor",
+                    "tempo": "Enable Tempo day sensor"
+                }
+            },
+            "production": {
+                "title": "Production",
+                "data": {
+                    "step_id": "Service",
+                    "price":"Price"
+                }
+            },            
+            "consumption": {
+                "title": "Consumption",
+                "data": {
+                    "step_id": "Service",
+                    "s_blue":"Price BLUE: full hour",
+                    "s_white":"Price WHITE: full hour",
+                    "s_red":"Price RED: full hour",
+                    "o_blue":"Price BLUE: off-peak hour",
+                    "o_white":"Price WHITE: off-peak hour",
+                    "o_red":"Price RED: off-peak hour",
+                    "price":"Price: full hour",
+                    "off_price":"Price: off-peak hour",
+                    "interval_new_id":"Ad new offpeak range"
+                }
+            },         
+            "rules": {
+                "title": "Add new range",
+                "description": "Add new range for tarification",
+                "data": {
+                    "rule_id": "Rule id",
+                    "step_id": "Service",
+                    "rule_start_time": "Start time",
+                    "rule_end_time": "End time",
+                    "rule_delete": "Delete this range"
+                }
+            }
+        },
+        "error": {
+            "syntax_error": "Syntax Error",
+            "time_error": "Start time is greater than end time",
+            "interval_time_error": "Minutes are not multiples of 30min"
+        } 
     },
-    "abort": {
-      "already_configured": "Service is already configured"
+    "selector": {
+        "consumption_choice": {
+            "options": {
+                "daily": "Daily",
+                "detail": "Detail"
+          }
+        },
+        "production_choice": {
+            "options": {
+                "daily": "Daily",
+                "detail": "Detail"
+            }
+        },
+        "interval_key": {
+            "options": {
+                "Add new interval": "Add new interval"
+            }
+        }                     
     }
-  },
-  "options": {
-    "step": {
-        "init": {
-            "title": "Enedis options",
-            "menu_options": {
-                "authentication": "Authentication",
-                "production": "Production",
-                "consumption": "Consumption",
-                "save": "Save & Exit"
-            }      
-        },
-        "authentication": {
-            "title": "Authentication",
-            "data": {
-                "token": "Token",
-                "ecowatt": "Enable Ecowatt sensor"
-            }
-        },
-        "consumption": {
-            "title": "Consumption",
-            "data": {
-                "bool_tempo": "Enable Tempo day sensor",
-                "service": "Service",
-                "pricing_new_id":"Add pricing"
-            }
-        },
-        "production": {
-            "title": "Production",
-            "data": {
-                "service": "Service",
-                "pricing_new_id":"Add pricing"
-            }
-        },            
-        "pricings": {
-            "title": "Add pricing",
-            "description": "A pricing contain multiple tarification range",
-            "data": {
-                "pricing_name": "Name",
-                "pricing_cost": "Cost",
-                "pricing_delete": "Delete this pricing",
-                "step_id": "Service",
-                "pricing_id": "Id",
-                "BLUE":"Blue cost",
-                "WHITE":"White cost",
-                "RED":"Red cost"                    
-            }
-        },            
-        "rules": {
-            "title": "Add new range",
-            "description": "Add new range for tarification",
-            "data": {
-                "rule_id": "Rule id",
-                "pricing_id": "Pricing id",
-                "step_id": "Service",
-                "rule_start_time": "Start time",
-                "rule_end_time": "End time",
-                "rule_delete": "Delete this range"
-            }
-        }
-    },
-    "error": {
-        "syntax_error": "syntax error",
-        "time_error": "Start time is greater than end time",
-        "interval_time_error": "Minutes are not multiples of 30min"
-    }
-  },
-  "selector": {
-    "consumption_choice": {
-        "options": {
-          "daily": "Daily",
-          "detail": "Detail"
-        }
-      },
-    "production_choice": {
-        "options": {
-            "daily": "Daily",
-            "detail": "Detail"
-        }
-      },
-    "pricing_key": {
-        "options": {
-            "Add new pricing": "Add new princing"
-        }
-    },
-    "interval_key": {
-        "options": {
-            "Add new pricing": "Add new interval"
-        }
-    }           
-  }    
 }

@@ -9,7 +9,7 @@
                     "pdl": "pdl",
                     "token": "token",
                     "ecowatt": "Enable Ecowatt sensor",
-                    "bool_tempo": "Tempo subscription",
+                    "tempo": "Tempo subscription",
                     "production": "Enable daily production sensor",
                     "consumption": "Enable daily consumption sensor"                               
                 }
@@ -38,44 +38,37 @@
                 "title": "Authentication",
                 "data": {
                     "token": "Token",
-                    "ecowatt": "Enable Ecowatt sensor"
-                }
-            },
-            "consumption": {
-                "title": "Consumption",
-                "data": {
-                    "bool_tempo": "Enable Tempo day sensor",
-                    "service": "Service",
-                    "pricing_new_id":"Add pricing"
+                    "ecowatt": "Enable Ecowatt sensor",
+                    "tempo": "Enable Tempo day sensor"
                 }
             },
             "production": {
                 "title": "Production",
                 "data": {
-                    "service": "Service",
-                    "pricing_new_id":"Add pricing"
-                }
-            },            
-            "pricings": {
-                "title": "Add pricing",
-                "description": "A pricing contain multiple tarification range",
-                "data": {
-                    "pricing_name": "Name",
-                    "pricing_cost": "Cost",
-                    "pricing_delete": "Delete this pricing",
                     "step_id": "Service",
-                    "pricing_id": "Id",
-                    "BLUE":"Blue cost",
-                    "WHITE":"White cost",
-                    "RED":"Red cost"
+                    "price":"Price"
                 }
             },            
+            "consumption": {
+                "title": "Consumption",
+                "data": {
+                    "step_id": "Service",
+                    "s_blue":"Price BLUE: full hour",
+                    "s_white":"Price WHITE: full hour",
+                    "s_red":"Price RED: full hour",
+                    "o_blue":"Price BLUE: off-peak hour",
+                    "o_white":"Price WHITE: off-peak hour",
+                    "o_red":"Price RED: off-peak hour",
+                    "price":"Price: full hour",
+                    "off_price":"Price: off-peak hour",
+                    "interval_new_id":"Ad new offpeak range"
+                }
+            },         
             "rules": {
                 "title": "Add new range",
                 "description": "Add new range for tarification",
                 "data": {
                     "rule_id": "Rule id",
-                    "pricing_id": "Pricing id",
                     "step_id": "Service",
                     "rule_start_time": "Start time",
                     "rule_end_time": "End time",
@@ -102,14 +95,9 @@
                 "detail": "Detail"
             }
         },
-        "pricing_key": {
-            "options": {
-                "Add new pricing": "Add new princing"
-            }
-        },
         "interval_key": {
             "options": {
-                "Add new pricing": "Add new interval"
+                "Add new interval": "Add new interval"
             }
         }                     
     }

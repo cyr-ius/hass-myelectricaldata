@@ -23,26 +23,22 @@ from homeassistant.util import slugify
 from .const import (
     CONF_AUTH,
     CONF_CONSUMPTION,
-    CONF_DATASET,
     CONF_ECOWATT,
-    CONF_FREQUENCY,
+    CONF_INTERVALS,
+    CONF_OFFPEAK,
     CONF_PDL,
-    CONF_POWER_MODE,
-    CONF_PRICING_COST,
-    CONF_PRICING_INTERVALS,
-    CONF_PRICING_NAME,
+    CONF_PRICINGS,
     CONF_PRODUCTION,
     CONF_RULE_END_TIME,
     CONF_RULE_START_TIME,
     CONF_SERVICE,
+    CONF_STD,
     CONF_TEMPO,
     CONSUMPTION_DAILY,
     CONSUMPTION_DETAIL,
-    DEFAULT_CC_PRICE,
     DOMAIN,
     PRODUCTION_DAILY,
     PRODUCTION_DETAIL,
-    TEMPO,
 )
 
 SCAN_INTERVAL = timedelta(hours=3)
@@ -61,16 +57,13 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.pdl: str = entry.data[CONF_PDL]
         self.access: dict[str, Any] = {}
         self.contract: dict[str, Any] = {}
-        self.access: dict[str, Any] = {}
+        self.last_access: datetime | None = None
         self.tempo: dict[str, Any] = {}
         self.tempo_day: str | None = None
         self.ecowatt: dict[str, Any] = {}
         self.ecowatt_day: str | None = None
-        token: str = (
-            entry.options[CONF_AUTH][CONF_TOKEN]
-            if entry.options.get(CONF_AUTH, {}).get(CONF_TOKEN)
-            else entry.data[CONF_TOKEN]
-        )
+        token: str = entry.options[CONF_AUTH][CONF_TOKEN]
+
         self.api = EnedisByPDL(
             token=token, session=async_create_clientsession(hass), timeout=30
         )
@@ -78,26 +71,23 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> list(str, str):
         """Update data via API."""
+        options = self.entry.options
         try:
             # Check  has a valid access
             self.access = await self.api.async_valid_access(self.pdl)
-
             if self.last_access is None or self.last_access < datetime.now().date():
                 # Get contract
                 self.contract = await self.api.async_get_contract(self.pdl)
 
                 str_date = datetime.now().strftime("%Y-%m-%d")
                 # Get tempo day
-                if (
-                    self.entry.options.get(CONF_CONSUMPTION, {}).get(CONF_TEMPO)
-                    and self.api.last_access
-                ):
+                if options.get(CONF_AUTH, {}).get(CONF_TEMPO) and self.api.last_access:
                     dt_date = datetime.now() - timedelta(days=7)
                     self.tempo = await self.api.async_get_tempoday(dt_date)
                     self.tempo_day = self.tempo.get(str_date)
 
                 # Get ecowatt information
-                if self.entry.options.get(CONF_AUTH, {}).get(CONF_ECOWATT):
+                if options.get(CONF_AUTH, {}).get(CONF_ECOWATT):
                     self.ecowatt = await self.api.async_get_ecowatt()
                     self.ecowatt_day = self.ecowatt.get(str_date)
 
@@ -105,188 +95,193 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         except EnedisException as error:
             _LOGGER.error(error)
 
-        # Fetch datas
-        data_collected = await self._async_datas_collect(self.tempo)
-
         # Add statistics in HA Database
         statistics = {}
+        services = []
+        if production := options.get(CONF_PRODUCTION, {}).get(CONF_SERVICE):
+            services.append(production)
+        if consumption := options.get(CONF_CONSUMPTION, {}).get(CONF_SERVICE):
+            services.append(consumption)
         try:
-            for data in data_collected:
-                _LOGGER.debug(data)
-                stats = await async_statistics(self.hass, **data)
+            for service in services:
+                stats = await async_statistics(
+                    self.hass,
+                    self.api,
+                    self.pdl,
+                    service,
+                    self.tempo,
+                    **self.entry.options,
+                )
                 statistics.update(stats)
         except EnedisException as error:
             _LOGGER.error("Update stats %s", error)
 
         return statistics
 
-    async def _async_datas_collect(self, tempo: dict[str, Any] | None = None):
-        """Prepare data."""
-        datas_collected = []
-        production = self.entry.options.get(CONF_PRODUCTION, {})
-        consumption = self.entry.options.get(CONF_CONSUMPTION, {})
-        end_date = datetime.now().date()
 
-        for option in [production, consumption]:
-            service = option.get(CONF_SERVICE)
+async def async_fetch_datas(
+    api: EnedisByPDL, pdl: str, service: str, start_date: datetime, end_date: datetime
+) -> dict[str, Any]:
+    """Fetch datas."""
+    dataset = {}
+    try:
+        _LOGGER.debug("Fetch datas for %s at %s", service, start_date.date())
+        if end_date.date() > start_date.date():
+            dataset = await api.async_fetch_datas(service, pdl, start_date, end_date)
+    except EnedisException as error:
+        _LOGGER.error("Fetch datas for %s (%s): %s", service, pdl, error)
+    finally:
+        dataset = dataset.get("meter_reading", {}).get("interval_reading", [])
 
-            start_date = (
-                self.minus_date(365).date()
-                if service in [PRODUCTION_DAILY, CONSUMPTION_DAILY]
-                else self.minus_date(6).date()
-            )
-
-            power_mode = (
-                CONF_CONSUMPTION
-                if service in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]
-                else CONF_PRODUCTION
-            )
-
-            freq = "30T" if service in [PRODUCTION_DETAIL, CONSUMPTION_DETAIL] else "D"
-
-            # Fetch datas
-            dataset = {}
-            try:
-                if service:
-                    dataset = await self.api.async_fetch_datas(
-                        service, self.pdl, start_date, end_date
-                    )
-            except EnedisException as error:
-                _LOGGER.error("Fetch datas for %s (%s): %s", service, self.pdl, error)
-            finally:
-                dataset = dataset.get("meter_reading", {}).get("interval_reading", [])
-
-            datas_collected.append(
-                {
-                    CONF_POWER_MODE: power_mode,
-                    CONF_PDL: self.pdl,
-                    TEMPO: tempo,
-                    CONF_DATASET: dataset,
-                    CONF_FREQUENCY: freq,
-                    **option,
-                }
-            )
-
-        return datas_collected
-
-    def minus_date(self, days: int) -> datetime:
-        """Substract now."""
-        return datetime.now() - timedelta(days=days)
+    return dataset
 
 
 async def async_statistics(
-    hass: HomeAssistant, dataset: dict, no_update: bool = False, **kwargs: Any
+    hass: HomeAssistant,
+    api: EnedisByPDL,
+    pdl: str,
+    service: str,
+    tempo: dict[str, Any] | None = None,
+    no_update: bool = False,
+    **kwargs: Any,
 ):
     """Compute statistics."""
     global_statistics = {}
-    pricings = kwargs.get("pricings", {})
-    tempo = kwargs.get(TEMPO)
-    pdl = kwargs.get(CONF_PDL)
-    power_mode = kwargs.get(CONF_POWER_MODE)
-    freq = kwargs.get(CONF_FREQUENCY)
+    end_date = datetime.now()
+    power_mode = (
+        CONF_CONSUMPTION
+        if service in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]
+        else CONF_PRODUCTION
+    )
+    intervals = kwargs.get(power_mode, {}).get(CONF_INTERVALS, {})
+    pricings = kwargs.get(power_mode, {}).get(CONF_PRICINGS, {})
+    intervals = [
+        (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
+        for interval in intervals.values()
+    ]
 
-    for pricing in pricings.values():
-        name = pricing[CONF_PRICING_NAME]
-        statistic_id = f"{DOMAIN}:" + slugify(f"{pdl}_{power_mode}_{name}".lower())
+    cumsums = {}
+    infos_db = {}
+    for mode in pricings.keys():
+        name = f"{pdl} {power_mode} {mode}".capitalize()
+        if mode == CONF_STD and pricings.get(CONF_OFFPEAK):
+            name = f"{pdl} {power_mode} full".capitalize()
+        name_cost = f"{name} cost".capitalize()
+        statistic_id = f"{DOMAIN}:" + slugify(name.lower())
         statistic_id_cost = f"{statistic_id}_cost"
-        intervals = [
-            (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
-            for interval in pricing[CONF_PRICING_INTERVALS].values()
-        ]
-
-        _LOGGER.debug("Static Id: %s", statistic_id)
 
         # Fetch last information in database
         last_stats = await get_instance(hass).async_add_executor_job(
             get_last_statistics, hass, 1, statistic_id, True, "sum"
         )
+        summary = 0 if not last_stats else last_stats[statistic_id][0]["sum"]
+
         last_stats_cost = await get_instance(hass).async_add_executor_job(
             get_last_statistics, hass, 1, statistic_id_cost, True, "sum"
         )
-
-        # Fetch last sum in database
-        summary = 0 if not last_stats else last_stats[statistic_id][0]["sum"]
         sumcost = 0 if not last_stats else last_stats_cost[statistic_id_cost][0]["sum"]
 
         # Fetch last time in database
         last_stats_time = (
             None
             if not last_stats
-            else datetime.fromtimestamp(last_stats[statistic_id][0]["start"]).strftime(
-                "%Y-%m-%d"
+            else datetime.fromtimestamp(last_stats[statistic_id][0]["start"])
+        )
+        if last_stats_time and service in [PRODUCTION_DETAIL, CONSUMPTION_DETAIL]:
+            start_date = last_stats_time + timedelta(hours=1)
+        elif last_stats_time:
+            start_date = last_stats_time + timedelta(days=1)
+        else:
+            start_date = (
+                datetime.now() - timedelta(days=365)
+                if service in [PRODUCTION_DAILY, CONSUMPTION_DAILY]
+                else datetime.now() - timedelta(days=6)
             )
-        )
-        _LOGGER.debug("Start date > %s", last_stats_time)
 
-        analytics = EnedisAnalytics(dataset)
-        datas_collected = analytics.get_data_analytcis(
-            convertKwh=True,
-            convertUTC=False,
-            start_date=last_stats_time,
-            intervals=intervals,
-            groupby="date",
-            freq=freq,
-            summary=True,
-            cumsum=summary,
-        )
+        infos_db[mode] = {
+            "statistic_id": statistic_id,
+            "statistic_id_cost": statistic_id_cost,
+            "name": name,
+            "name_cost": name_cost,
+            "start_date": start_date,
+        }
+        cumsums[mode] = {"sum_value": summary, "sum_price": sumcost}
 
-        # Fill sensor value
-        if sum_value := analytics.get_last_value(datas_collected, "date", "sum_value"):
-            summary = sum_value
+    # Fetch datas
+    dataset = await async_fetch_datas(
+        api, pdl, service, infos_db[CONF_STD]["start_date"], end_date
+    )
 
-        if no_update is False:
-            global_statistics.update({f"{power_mode} {name}".capitalize(): summary})
+    # Compute datas
+    analytics = EnedisAnalytics(dataset)
+    datas_collected = analytics.get_data_analytics(
+        convertKwh=True,
+        convertUTC=False,
+        intervals=intervals,
+        groupby=True,
+        start_date=infos_db[CONF_STD]["start_date"],
+        cumsums=cumsums,
+        summary=True,
+        prices=pricings,
+        tempo=tempo,
+    )
 
+    for mode in pricings.keys():
         stats = []
         costs = []
         for datas in datas_collected:
-            stats.append(
-                StatisticData(
-                    start=datas["date"], state=datas["value"], sum=datas["sum_value"]
+            if datas["notes"] == mode:
+                stats.append(
+                    StatisticData(
+                        start=datas["date"],
+                        state=datas["value"],
+                        sum=datas["sum_value"],
+                    )
                 )
-            )
-
-            # Compute princing
-            if tempo:
-                cur_stats_date = datas["date"].strftime("%Y-%m-%d")
-                if tempo_day := tempo.get(cur_stats_date):
-                    price = pricing.get(tempo_day, DEFAULT_CC_PRICE)
-                else:
-                    price = DEFAULT_CC_PRICE
-            else:
-                price = pricing.get(CONF_PRICING_COST, DEFAULT_CC_PRICE)
-
-            if price:
-                datas["cost"] = datas["value"] * price
-                sumcost = sumcost + datas["cost"]
-                costs.append(StatisticData(start=datas["date"], state=datas["cost"], sum=sumcost))
-            else:
-                _LOGGER.warn("Price not found ,compute cost not possible")
+                costs.append(
+                    StatisticData(
+                        start=datas["date"],
+                        state=datas["price"],
+                        sum=datas["sum_price"],
+                    )
+                )
+                cumsums[mode] = {
+                    "sum_value": datas["sum_value"],
+                    "sum_price": datas["sum_price"],
+                }
 
         if stats and costs:
-            _LOGGER.debug("Add %s stat in table", name)
+            _LOGGER.debug("Add %s stat in table", mode)
             metadata = StatisticMetaData(
                 has_mean=False,
                 has_sum=True,
-                name=name,
+                name=infos_db[mode]["name"],
                 source=DOMAIN,
-                statistic_id=statistic_id,
+                statistic_id=infos_db[mode]["statistic_id"],
                 unit_of_measurement=ENERGY_KILO_WATT_HOUR,
             )
             hass.async_add_executor_job(
                 async_add_external_statistics, hass, metadata, stats
             )
-            _LOGGER.debug("Add %s cost in table", name)
+            _LOGGER.debug("Add %s cost in table", mode)
             metacost = StatisticMetaData(
                 has_mean=False,
                 has_sum=True,
-                name=f"{name}_cost",
+                name=infos_db[mode]["name_cost"],
                 source=DOMAIN,
-                statistic_id=f"{statistic_id}_cost",
+                statistic_id=infos_db[mode]["statistic_id_cost"],
                 unit_of_measurement="EUR",
             )
             hass.async_add_executor_job(
                 async_add_external_statistics, hass, metacost, costs
             )
+
+        # Fill sensor value
+        if no_update is False:
+            for name, summaries in cumsums.items():
+                if (summary := summaries["sum_value"]) > 0:
+                    global_statistics.update(
+                        {f"{power_mode} {name}".capitalize(): summary}
+                    )
 
     return global_statistics

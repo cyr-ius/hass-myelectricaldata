@@ -22,37 +22,40 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_AUTH,
+    CONF_BLUE,
     CONF_CONSUMPTION,
     CONF_ECOWATT,
+    CONF_INTERVALS,
+    CONF_OFF_PRICE,
+    CONF_OFFPEAK,
     CONF_PDL,
-    CONF_PRICE_NEW_ID,
-    CONF_PRICING_COST,
-    CONF_PRICING_DELETE,
-    CONF_PRICING_ID,
-    CONF_PRICING_INTERVALS,
-    CONF_PRICING_NAME,
+    CONF_PRICE,
     CONF_PRICINGS,
     CONF_PRODUCTION,
+    CONF_RED,
     CONF_RULE_DELETE,
     CONF_RULE_END_TIME,
     CONF_RULE_ID,
     CONF_RULE_NEW_ID,
     CONF_RULE_START_TIME,
-    CONF_RULES,
     CONF_SERVICE,
+    CONF_STD,
     CONF_TEMPO,
+    CONF_WHITE,
     CONSUMPTION_DAILY,
     CONSUMPTION_DETAIL,
     DEFAULT_CC_PRICE,
     DEFAULT_CONSUMPTION,
+    DEFAULT_CONSUMPTION_TEMPO,
+    DEFAULT_HC_PRICE,
+    DEFAULT_HP_PRICE,
     DEFAULT_PC_PRICE,
     DEFAULT_PRODUCTION,
-    DEFAULT_CONSUMPTION_TEMPO,
     DOMAIN,
     PRODUCTION_DAILY,
     PRODUCTION_DETAIL,
     SAVE,
-    CONF_AUTH,
 )
 
 PRODUCTION_CHOICE = [
@@ -69,10 +72,10 @@ DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_PDL): str,
         vol.Required(CONF_TOKEN): str,
-        vol.Optional(CONF_ECOWATT): bool,
-        vol.Optional(CONF_PRODUCTION): bool,
-        vol.Optional(CONF_CONSUMPTION): bool,
-        vol.Optional(CONF_TEMPO): bool,
+        vol.Required(CONF_ECOWATT, default=False): bool,
+        vol.Required(CONF_PRODUCTION, default=False): bool,
+        vol.Required(CONF_CONSUMPTION, default=False): bool,
+        vol.Required(CONF_TEMPO, default=False): bool,
     }
 )
 
@@ -106,24 +109,22 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
                 _LOGGER.error(error)
                 errors["base"] = "cannot_connect"
             else:
+                data = {CONF_PDL: user_input[CONF_PDL]}
                 opts = {
                     CONF_AUTH: {
-                        CONF_TOKEN: user_input.get(CONF_TOKEN),
-                        CONF_ECOWATT: user_input.get(CONF_ECOWATT),
+                        CONF_TOKEN: user_input[CONF_TOKEN],
+                        CONF_ECOWATT: user_input[CONF_ECOWATT],
+                        CONF_TEMPO: user_input[CONF_TEMPO],
                     }
                 }
-                if b_tempo := user_input[CONF_TEMPO]:
-                    opts.update({CONF_CONSUMPTION: {CONF_TEMPO: b_tempo}})
-                if user_input.get(CONF_PRODUCTION):
+                if user_input[CONF_PRODUCTION]:
                     opts.update({CONF_PRODUCTION: {CONF_SERVICE: PRODUCTION_DAILY}})
-                if user_input.get(CONF_CONSUMPTION):
+                if user_input[CONF_CONSUMPTION]:
                     opts.update({CONF_CONSUMPTION: {CONF_SERVICE: CONSUMPTION_DAILY}})
 
                 options = default_settings(opts)
                 return self.async_create_entry(
-                    title=f"Linky ({user_input[CONF_PDL]})",
-                    data=user_input,
-                    options=options,
+                    title=f"Linky ({user_input[CONF_PDL]})", data=data, options=options
                 )
 
         return self.async_show_form(
@@ -146,7 +147,6 @@ class EnedisOptionsFlowHandler(OptionsFlow):
             CONF_CONSUMPTION: _consumption.copy(),
         }
         self._conf_rule_id: int | None = None
-        self._conf_pricing_id: int | None = None
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -162,15 +162,17 @@ class EnedisOptionsFlowHandler(OptionsFlow):
         step_id = CONF_AUTH
         schema = vol.Schema(
             {
-                vol.Optional(
+                vol.Required(
                     CONF_TOKEN,
-                    default=self._datas[step_id].get(
-                        CONF_TOKEN, self.config_entry.data[CONF_TOKEN]
-                    ),
+                    default=self._datas[step_id].get(CONF_TOKEN),
                 ): str,
-                vol.Optional(
+                vol.Required(
                     CONF_ECOWATT,
                     default=self._datas[step_id].get(CONF_ECOWATT, False),
+                ): bool,
+                vol.Required(
+                    CONF_TEMPO,
+                    default=self._datas[step_id].get(CONF_TEMPO, False),
                 ): bool,
             }
         )
@@ -184,6 +186,7 @@ class EnedisOptionsFlowHandler(OptionsFlow):
     async def async_step_production(self, user_input: dict[str, Any] | None = None):
         """Production step."""
         step_id = CONF_PRODUCTION
+        standard = self._datas[step_id].get(CONF_PRICINGS, {}).get(CONF_STD, {})
         schema = vol.Schema(
             {
                 vol.Optional(
@@ -199,18 +202,20 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                         translation_key="production_choice",
                     )
                 ),
-                vol.Optional(CONF_PRICINGS): SelectSelector(
-                    SelectSelectorConfig(
-                        options=self.get_pricing_list(step_id),
-                        mode=SelectSelectorMode.LIST,
-                    )
-                ),
+                vol.Optional(
+                    CONF_PRICE, default=standard.get(CONF_PRICE, DEFAULT_PC_PRICE)
+                ): cv.positive_float,
             }
         )
         if user_input is not None:
-            self._datas[step_id].update({CONF_SERVICE: user_input.get(CONF_SERVICE)})
-            if sel_pricing := user_input.get(CONF_PRICINGS):
-                return await self.async_step_pricings(None, sel_pricing, step_id)
+            self._datas[step_id].update(
+                {
+                    CONF_SERVICE: user_input.get(CONF_SERVICE),
+                    CONF_PRICINGS: {
+                        CONF_STD: {CONF_PRICE: user_input.get(CONF_PRICE)},
+                    },
+                }
+            )
             return await self.async_step_init()
         return self.async_show_form(
             step_id=step_id, data_schema=schema, last_step=False
@@ -219,42 +224,105 @@ class EnedisOptionsFlowHandler(OptionsFlow):
     async def async_step_consumption(self, user_input: dict[str, Any] | None = None):
         """Consumption step."""
         step_id = CONF_CONSUMPTION
-        schema = vol.Schema(
+        standard = self._datas[step_id].get(CONF_PRICINGS, {}).get(CONF_STD, {})
+        offpeak = self._datas[step_id].get(CONF_PRICINGS, {}).get(CONF_OFFPEAK, {})
+        schema = {
+            vol.Optional(
+                CONF_SERVICE,
+                description={"suggested_value": self._datas[step_id].get(CONF_SERVICE)},
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=CONSUMPTION_CHOICE,
+                    mode=SelectSelectorMode.DROPDOWN,
+                    custom_value=True,
+                    translation_key="consumption_choice",
+                )
+            ),
+        }
+        standard_schema = {
+            vol.Optional(
+                CONF_PRICE, default=standard.get(CONF_PRICE, DEFAULT_CC_PRICE)
+            ): cv.positive_float,
+            vol.Optional(
+                CONF_OFF_PRICE, default=offpeak.get(CONF_PRICE, DEFAULT_HC_PRICE)
+            ): cv.positive_float,
+        }
+        tempo_schema = {
+            vol.Optional(
+                "s_blue",
+                default=standard.get(CONF_BLUE, round(DEFAULT_HP_PRICE * 0.7, 2)),
+            ): cv.positive_float,
+            vol.Optional(
+                "s_white",
+                default=standard.get(CONF_WHITE, round(DEFAULT_HP_PRICE * 0.9, 2)),
+            ): cv.positive_float,
+            vol.Optional(
+                "s_red", default=standard.get(CONF_RED, round(DEFAULT_HP_PRICE * 3, 2))
+            ): cv.positive_float,
+            vol.Optional(
+                "o_blue",
+                default=offpeak.get(CONF_BLUE, round(DEFAULT_HC_PRICE * 0.6, 2)),
+            ): cv.positive_float,
+            vol.Optional(
+                "o_white",
+                default=offpeak.get(CONF_WHITE, round(DEFAULT_HC_PRICE * 0.76, 2)),
+            ): cv.positive_float,
+            vol.Optional(
+                "o_red",
+                default=offpeak.get(CONF_RED, round(DEFAULT_HC_PRICE * 0.85, 2)),
+            ): cv.positive_float,
+        }
+
+        if self._datas[CONF_AUTH].get(CONF_TEMPO):
+            schema.update(tempo_schema)
+        else:
+            schema.update(standard_schema)
+
+        data_schema = vol.Schema(
             {
-                vol.Optional(
-                    CONF_TEMPO,
-                    default=self._datas[step_id].get(CONF_TEMPO, False),
-                ): bool,
-                vol.Optional(
-                    CONF_SERVICE,
-                    description={
-                        "suggested_value": self._datas[step_id].get(CONF_SERVICE)
-                    },
-                ): SelectSelector(
+                **schema,
+                vol.Optional(CONF_INTERVALS): SelectSelector(
                     SelectSelectorConfig(
-                        options=CONSUMPTION_CHOICE,
-                        mode=SelectSelectorMode.DROPDOWN,
-                        custom_value=True,
-                        translation_key="consumption_choice",
-                    )
-                ),
-                vol.Optional(CONF_PRICINGS): SelectSelector(
-                    SelectSelectorConfig(
-                        options=self.get_pricing_list(step_id),
+                        options=self.get_intervals(step_id),
                         mode=SelectSelectorMode.LIST,
-                        translation_key="pricing_key",
+                        translation_key="interval_key",
                     )
                 ),
             }
         )
         if user_input is not None:
             self._datas[step_id].update({CONF_SERVICE: user_input.get(CONF_SERVICE)})
-            self._datas[step_id].update({CONF_TEMPO: user_input[CONF_TEMPO]})
-            if sel_pricing := user_input.get(CONF_PRICINGS):
-                return await self.async_step_pricings(None, sel_pricing, step_id)
+            if self._datas[CONF_AUTH].get(CONF_TEMPO):
+                self._datas[step_id].update(
+                    {
+                        CONF_PRICINGS: {
+                            CONF_STD: {
+                                CONF_BLUE: user_input["s_blue"],
+                                CONF_WHITE: user_input["s_white"],
+                                CONF_RED: user_input["s_red"],
+                            },
+                            CONF_OFFPEAK: {
+                                CONF_BLUE: user_input["o_blue"],
+                                CONF_WHITE: user_input["o_white"],
+                                CONF_RED: user_input["o_red"],
+                            },
+                        }
+                    }
+                )
+            else:
+                self._datas[step_id].update(
+                    {
+                        CONF_PRICINGS: {
+                            CONF_STD: {CONF_PRICE: user_input[CONF_PRICE]},
+                            CONF_OFFPEAK: {CONF_PRICE: user_input[CONF_OFF_PRICE]},
+                        }
+                    }
+                )
+            if sel_interval := user_input.get(CONF_INTERVALS):
+                return await self.async_step_rules(None, sel_interval, step_id)
             return await self.async_step_init()
         return self.async_show_form(
-            step_id=step_id, data_schema=schema, last_step=False
+            step_id=step_id, data_schema=data_schema, last_step=False
         )
 
     async def async_step_save(
@@ -266,139 +334,22 @@ class EnedisOptionsFlowHandler(OptionsFlow):
 
         return self.async_create_entry(title="", data=self._datas)
 
-    async def async_step_pricings(
-        self,
-        user_input: dict[str, Any] | None = None,
-        pricing_id: str | None = None,
-        step_id: str | None = None,
-    ) -> FlowResult:
-        """Handle options flow for apps list."""
-        if pricing_id is not None:
-            self._conf_pricing_id = (
-                pricing_id if pricing_id != CONF_PRICE_NEW_ID else None
-            )
-            return self._async_pricings_form(pricing_id, step_id)
-
-        if user_input is not None:
-            pricing_id = user_input.get(CONF_PRICING_ID, self._conf_pricing_id)
-            step_id = user_input["step_id"]
-            if pricing_id:
-                pricings = self._datas[step_id].get(CONF_PRICINGS, {})
-                if user_input.get(CONF_PRICING_DELETE, False):
-                    pricings.pop(pricing_id)
-                else:
-                    intervals = pricings.get(pricing_id, {}).get(
-                        CONF_PRICING_INTERVALS, {}
-                    )
-                    default_price = (
-                        DEFAULT_CC_PRICE
-                        if step_id == CONF_CONSUMPTION
-                        else DEFAULT_PC_PRICE
-                    )
-                    pricings.update(
-                        {
-                            str(pricing_id): {
-                                CONF_PRICING_NAME: user_input.get(CONF_PRICING_NAME),
-                                CONF_PRICING_COST: float(
-                                    user_input.get(CONF_PRICING_COST, default_price)
-                                ),
-                                CONF_PRICING_INTERVALS: intervals,
-                            }
-                        }
-                    )
-
-                    if self._datas[step_id].get(CONF_TEMPO):
-                        pricings[pricing_id].update(
-                            {
-                                CONF_PRICING_COST: CONF_TEMPO,
-                                "BLUE": user_input["BLUE"],
-                                "WHITE": user_input["WHITE"],
-                                "RED": user_input["RED"],
-                            }
-                        )
-
-                    self._datas[step_id][CONF_PRICINGS] = pricings
-
-                    if rule_id := user_input.get(CONF_RULES):
-                        return await self.async_step_rules(
-                            rule_id=rule_id, pricing_id=pricing_id, step_id=step_id
-                        )
-
-        if step_id == CONF_CONSUMPTION:
-            return await self.async_step_consumption()
-        else:
-            return await self.async_step_production()
-
-    @callback
-    def _async_pricings_form(self, pricing_id: str, step_id: str) -> FlowResult:
-        """Return configuration form for rules."""
-        schema = {
-            vol.Required("step_id"): step_id,
-            vol.Optional(CONF_PRICING_NAME): str,
-        }
-        standard_schema = {
-            vol.Optional(CONF_PRICING_COST): cv.positive_float,
-        }
-        tempo_schema = {
-            vol.Optional("BLUE"): cv.positive_float,
-            vol.Optional("WHITE"): cv.positive_float,
-            vol.Optional("RED"): cv.positive_float,
-        }
-
-        if self._datas[step_id].get(CONF_TEMPO):
-            schema.update(tempo_schema)
-        else:
-            schema.update(standard_schema)
-
-        schema.update(
-            {
-                vol.Optional(CONF_RULES): SelectSelector(
-                    SelectSelectorConfig(
-                        options=self.get_intervals(step_id, pricing_id),
-                        mode=SelectSelectorMode.LIST,
-                        translation_key="interval_key",
-                    )
-                ),
-            }
-        )
-
-        pricings = self._datas[step_id].get(CONF_PRICINGS, {})
-        if pricing_id == CONF_PRICE_NEW_ID:
-            id = int(max(pricings.keys())) + 1 if pricings.keys() else 1
-            data_schema = vol.Schema({vol.Required(CONF_PRICING_ID): str(id), **schema})
-        else:
-            data_schema = vol.Schema(
-                {**schema, vol.Optional(CONF_PRICING_DELETE, default=False): bool}
-            )
-
-        return self.async_show_form(
-            step_id="pricings",
-            data_schema=self.add_suggested_values_to_schema(
-                data_schema, pricings.get(pricing_id, {})
-            ),
-            last_step=False,
-        )
-
     async def async_step_rules(
         self,
         user_input: dict[str, Any] | None = None,
         rule_id: str | None = None,
-        pricing_id: str | None = None,
         step_id: str | None = None,
     ) -> FlowResult:
         """Handle options flow for apps list."""
         if rule_id is not None:
             self._conf_rule_id = rule_id if rule_id != CONF_RULE_NEW_ID else None
-            return self._async_rules_form(rule_id, pricing_id, step_id)
+            return self._async_rules_form(rule_id, step_id)
 
         if user_input is not None:
             rule_id = user_input.get(CONF_RULE_ID, self._conf_rule_id)
             step_id = user_input["step_id"]
-            pricing_id = user_input[CONF_PRICING_ID]
             if rule_id:
-                rules = self._datas[step_id][CONF_PRICINGS][pricing_id].get(
-                    CONF_PRICING_INTERVALS, {}
-                )
+                rules = self._datas[step_id].get(CONF_INTERVALS, {})
                 if user_input.get(CONF_RULE_DELETE, False):
                     rules.pop(str(rule_id))
                 else:
@@ -412,28 +363,22 @@ class EnedisOptionsFlowHandler(OptionsFlow):
                             }
                         }
                     )
-                    self._datas[step_id][CONF_PRICINGS][pricing_id][
-                        CONF_PRICING_INTERVALS
-                    ].update(**rules)
 
-            return await self.async_step_pricings(None, pricing_id, step_id)
+                self._datas[step_id][CONF_INTERVALS] = rules
+
+        if step_id == CONF_CONSUMPTION:
+            return await self.async_step_consumption()
+        else:
+            return await self.async_step_production()
 
     @callback
-    def _async_rules_form(
-        self, rule_id: str, pricing_id: str, step_id: str
-    ) -> FlowResult:
+    def _async_rules_form(self, rule_id: str, step_id: str) -> FlowResult:
         """Return configuration form for rules."""
-        intervals = (
-            self._datas.get(step_id, {})
-            .get(CONF_PRICINGS, {})
-            .get(pricing_id, {})
-            .get(CONF_PRICING_INTERVALS)
-        )
+        intervals = self._datas.get(step_id, {}).get(CONF_INTERVALS, {})
         schema = {
             vol.Required("step_id"): step_id,
-            vol.Required(CONF_PRICING_ID): pricing_id,
-            vol.Optional(CONF_RULE_START_TIME): TimeSelector(TimeSelectorConfig()),
-            vol.Optional(CONF_RULE_END_TIME): TimeSelector(TimeSelectorConfig()),
+            vol.Required(CONF_RULE_START_TIME): TimeSelector(TimeSelectorConfig()),
+            vol.Required(CONF_RULE_END_TIME): TimeSelector(TimeSelectorConfig()),
         }
 
         if rule_id == CONF_RULE_NEW_ID:
@@ -441,7 +386,7 @@ class EnedisOptionsFlowHandler(OptionsFlow):
             data_schema = vol.Schema({vol.Required(CONF_RULE_ID): str(id), **schema})
         else:
             data_schema = vol.Schema(
-                {**schema, vol.Optional(CONF_RULE_DELETE, default=False): bool}
+                {**schema, vol.Required(CONF_RULE_DELETE, default=False): bool}
             )
 
         return self.async_show_form(
@@ -452,29 +397,9 @@ class EnedisOptionsFlowHandler(OptionsFlow):
             last_step=False,
         )
 
-    def get_pricing_list(self, step_id: str) -> dict[str, Any]:
-        """Return pricing list."""
-        list_pricing = [
-            SelectOptionDict(
-                value=pricing_id,
-                label=f"{v.get(CONF_PRICING_NAME)} - {v.get(CONF_PRICING_COST)}",
-            )
-            for pricing_id, v in self._datas[step_id].get(CONF_PRICINGS, {}).items()
-        ]
-        list_pricing.append(
-            SelectOptionDict(value=CONF_PRICE_NEW_ID, label="Add new pricing")
-        )
-
-        return list_pricing
-
-    def get_intervals(self, step_id: str, pricing_id: str) -> dict[str, Any]:
+    def get_intervals(self, step_id: str) -> dict[str, Any]:
         """Return intervals."""
-        intervals = (
-            self._datas[step_id]
-            .get(CONF_PRICINGS, {})
-            .get(pricing_id, {})
-            .get(CONF_PRICING_INTERVALS, {})
-        )
+        intervals = self._datas[step_id].get(CONF_INTERVALS, {})
         list_intervals = [
             SelectOptionDict(
                 value=rule_id,
@@ -491,31 +416,40 @@ class EnedisOptionsFlowHandler(OptionsFlow):
 
 def default_settings(datas: dict[str, Any]):
     """Set default datas if missing."""
+    auth = datas.get(CONF_AUTH)
     production = datas.get(CONF_PRODUCTION)
     if (
         production
         and production.get(CONF_SERVICE)
-        and len(production.get(CONF_PRICINGS, {})) == 0
+        and production.get(CONF_PRICINGS) is None
     ):
-        datas[CONF_PRODUCTION][CONF_PRICINGS] = DEFAULT_PRODUCTION
+        datas[CONF_PRODUCTION].update(DEFAULT_PRODUCTION)
 
     consumption = datas.get(CONF_CONSUMPTION)
     if (
         consumption
         and consumption.get(CONF_SERVICE)
-        and len(consumption.get(CONF_PRICINGS, {})) == 0
+        and consumption.get(CONF_PRICINGS) is None
     ):
-        datas[CONF_CONSUMPTION][CONF_PRICINGS] = DEFAULT_CONSUMPTION
+        datas[CONF_CONSUMPTION].update(DEFAULT_CONSUMPTION)
 
     if (
         consumption
-        and consumption.get(CONF_TEMPO)
-        and len(consumption.get(CONF_PRICINGS, {})) == 0
+        and auth.get(CONF_TEMPO)
+        and CONF_BLUE not in consumption.get(CONF_PRICINGS, {}).get(CONF_STD, {})
+        and CONF_BLUE not in consumption.get(CONF_PRICINGS, {}).get(CONF_OFFPEAK, {})
     ):
         datas[CONF_CONSUMPTION] = {
             CONF_SERVICE: CONSUMPTION_DETAIL,
-            CONF_TEMPO: consumption.get(CONF_TEMPO),
-            CONF_PRICINGS: DEFAULT_CONSUMPTION_TEMPO,
+            **DEFAULT_CONSUMPTION_TEMPO,
         }
+
+    if (
+        consumption
+        and not auth.get(CONF_TEMPO)
+        and CONF_BLUE in consumption.get(CONF_PRICINGS, {}).get(CONF_STD, {})
+        and CONF_BLUE in consumption.get(CONF_PRICINGS, {}).get(CONF_OFFPEAK, {})
+    ):
+        datas[CONF_CONSUMPTION].update(DEFAULT_CONSUMPTION)
 
     return datas
