@@ -82,8 +82,8 @@ DATA_SCHEMA = vol.Schema(
 _LOGGER = logging.getLogger(__name__)
 
 
-class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
-    """Handle a Enedis config flow."""
+class MyElectricalFlowHandler(ConfigFlow, domain=DOMAIN):
+    """Handle a config flow."""
 
     VERSION = 1
 
@@ -91,7 +91,7 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Get option flow."""
-        return EnedisOptionsFlowHandler(config_entry)
+        return MyElectricalDataOptionsFlowHandler(config_entry)
 
     async def async_step_user(self, user_input=None):
         """Handle a flow initialized by the user."""
@@ -132,7 +132,7 @@ class EnedisFlowHandler(ConfigFlow, domain=DOMAIN):
         )
 
 
-class EnedisOptionsFlowHandler(OptionsFlow):
+class MyElectricalDataOptionsFlowHandler(OptionsFlow):
     """Handle option."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
@@ -331,7 +331,6 @@ class EnedisOptionsFlowHandler(OptionsFlow):
         """Save the updated options."""
         self._datas = default_settings(self._datas)
         self._datas.update({"last_update": dt.now()})
-
         return self.async_create_entry(title="", data=self._datas)
 
     async def async_step_rules(
@@ -382,8 +381,8 @@ class EnedisOptionsFlowHandler(OptionsFlow):
         }
 
         if rule_id == CONF_RULE_NEW_ID:
-            id = int(max(intervals.keys())) + 1 if intervals.keys() else 1
-            data_schema = vol.Schema({vol.Required(CONF_RULE_ID): str(id), **schema})
+            r_id = int(max(intervals.keys())) + 1 if intervals.keys() else 1
+            data_schema = vol.Schema({vol.Required(CONF_RULE_ID): str(r_id), **schema})
         else:
             data_schema = vol.Schema(
                 {**schema, vol.Required(CONF_RULE_DELETE, default=False): bool}
