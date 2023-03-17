@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from myelectricaldatapy import EnedisByPDL, EnedisException
+from myelectricaldatapy import EnedisByPDL
 import voluptuous as vol
 
 from homeassistant.components.recorder import get_instance
@@ -17,13 +17,18 @@ import homeassistant.helpers.config_validation as cv
 from .const import (
     CLEAR_SERVICE,
     CONF_AUTH,
+    CONF_CONSUMPTION,
     CONF_END_DATE,
     CONF_ENTRY,
-    CONF_PDL,
-    CONF_POWER_MODE,
+    CONF_OFF_PRICE,
+    CONF_PRICE,
+    CONF_PRICINGS,
+    CONF_PRODUCTION,
     CONF_SERVICE,
     CONF_START_DATE,
     CONF_STATISTIC_ID,
+    CONSUMPTION_DAILY,
+    CONSUMPTION_DETAIL,
     DOMAIN,
     FETCH_SERVICE,
 )
@@ -34,9 +39,11 @@ _LOGGER = logging.getLogger(__name__)
 HISTORY_SERVICE_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_ENTRY): str,
-        vol.Optional(CONF_POWER_MODE): str,
-        vol.Optional(CONF_START_DATE): cv.date,
-        vol.Optional(CONF_END_DATE): cv.date,
+        vol.Optional(CONF_SERVICE): str,
+        vol.Optional(CONF_START_DATE): cv.datetime,
+        vol.Optional(CONF_END_DATE): cv.datetime,
+        vol.Optional(CONF_PRICE): cv.positive_float,
+        vol.Optional(CONF_OFF_PRICE): cv.positive_float,
     }
 )
 CLEAR_SERVICE_SCHEMA = vol.Schema(
@@ -55,36 +62,49 @@ async def async_services(
     async def async_reload_history(call: ServiceCall) -> None:
         """Load datas in statics table."""
         entry = hass.data[DOMAIN].get(call.data[CONF_ENTRY])
-        power_mode = call.data[CONF_POWER_MODE]
-        option = entry.config_entry.options.get(power_mode, {})
-        option.update({CONF_POWER_MODE: power_mode, CONF_PDL: entry.pdl})
+        service = call.data[CONF_SERVICE]
+        options = entry.config_entry.options
+        start_date = call.data[CONF_START_DATE]
+        end_date = call.data[CONF_END_DATE]
 
-        # Fetch datas
-        dataset = {}
-        try:
-            api = EnedisByPDL(
-                token=entry.config_entry.options[CONF_AUTH][CONF_TOKEN],
-                session=async_create_clientsession(hass),
-                timeout=30,
-            )
-            dataset = await api.async_fetch_datas(
-                option[CONF_SERVICE],
-                entry.pdl,
-                call.data[CONF_START_DATE],
-                call.data[CONF_END_DATE],
-            )
-        except EnedisException as error:
-            raise EnedisException(error) from error
-        finally:
-            dataset = dataset.get("meter_reading", {}).get("interval_reading", [])
+        power_mode = (
+            CONF_CONSUMPTION
+            if service in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]
+            else CONF_PRODUCTION
+        )
+
+        if price := call.data.get(CONF_PRICE):
+            options[power_mode][CONF_PRICINGS].update({"standard": {CONF_PRICE: price}})
+        else:
+            options[power_mode][CONF_PRICINGS].pop("standard", {})
+
+        if off_price := call.data.get(CONF_OFF_PRICE):
+            options[power_mode][CONF_PRICINGS].update({"offpeak": {CONF_PRICE: off_price}})
+        else:
+            options[power_mode][CONF_PRICINGS].pop("offpeak", {})
+
+        api = EnedisByPDL(
+            token=entry.config_entry.options[CONF_AUTH][CONF_TOKEN],
+            session=async_create_clientsession(hass),
+            timeout=30,
+        )
 
         # Add statistics in HA Database
-        await async_statistics(hass, dataset, True, **option)
+        await async_statistics(
+            hass=hass,
+            api=api,
+            pdl=entry.pdl,
+            service=service,
+            tempo=None,
+            no_update=True,
+            search_date=(start_date, end_date),
+            **options,
+        )
 
     async def async_clear(call: ServiceCall) -> None:
         """Clear data in database."""
         statistic_id = call.data[CONF_STATISTIC_ID]
-        if not statistic_id.startswith("enedis:"):
+        if not statistic_id.startswith("myelectricaldata:"):
             _LOGGER.error("statistic_id is incorrect %s", statistic_id)
             return
         hass.async_add_executor_job(
