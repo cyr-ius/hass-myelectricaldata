@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import logging
-from typing import Any
+from typing import Any, Tuple
 
 from myelectricaldatapy import EnedisAnalytics, EnedisByPDL, EnedisException
 
@@ -125,14 +125,15 @@ async def async_fetch_datas(
     """Fetch datas."""
     dataset = {}
     try:
-        _LOGGER.debug("Fetch datas for %s at %s", service, start_date.date())
         if end_date.date() > start_date.date():
+            _LOGGER.debug("Fetch datas for %s at %s", service, start_date.date())
             dataset = await api.async_fetch_datas(service, pdl, start_date, end_date)
     except EnedisException as error:
         _LOGGER.error("Fetch datas for %s (%s): %s", service, pdl, error)
     finally:
         dataset = dataset.get("meter_reading", {}).get("interval_reading", [])
 
+    _LOGGER.debug(dataset)
     return dataset
 
 
@@ -143,11 +144,11 @@ async def async_statistics(
     service: str,
     tempo: dict[str, Any] | None = None,
     no_update: bool = False,
+    search_date: Tuple[datetime, datetime] | None = None,
     **kwargs: Any,
 ):
     """Compute statistics."""
     global_statistics = {}
-    end_date = datetime.now()
     power_mode = (
         CONF_CONSUMPTION
         if service in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]
@@ -203,14 +204,24 @@ async def async_statistics(
             "statistic_id_cost": statistic_id_cost,
             "name": name,
             "name_cost": name_cost,
-            "start_date": start_date,
+            "search_date": (start_date, datetime.now()),
         }
         cumsums[mode] = {"sum_value": summary, "sum_price": sumcost}
 
-    # Fetch datas
-    dataset = await async_fetch_datas(
-        api, pdl, service, infos_db[CONF_STD]["start_date"], end_date
+    # Get search date from parameter or last info in database
+    search_date = search_date if search_date else infos_db[CONF_STD]["search_date"]
+    cumsums = (
+        {
+            "standard": {"sum_value": 0, "sum_price": 0},
+            "offpeak": {"sum_value": 0, "sum_price": 0},
+        }
+        if search_date
+        else cumsums
     )
+    start_date, end_date = search_date
+
+    # Fetch datas
+    dataset = await async_fetch_datas(api, pdl, service, start_date, end_date)
 
     # Compute datas
     analytics = EnedisAnalytics(dataset)
@@ -219,7 +230,7 @@ async def async_statistics(
         convertUTC=False,
         intervals=intervals,
         groupby=True,
-        start_date=infos_db[CONF_STD]["start_date"],
+        start_date=start_date,
         cumsums=cumsums,
         summary=True,
         prices=pricings,
@@ -231,6 +242,7 @@ async def async_statistics(
         costs = []
         for datas in datas_collected:
             if datas["notes"] == mode:
+                _LOGGER.debug(datas)
                 stats.append(
                     StatisticData(
                         start=datas["date"],
