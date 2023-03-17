@@ -408,7 +408,7 @@ class EnedisOptionsFlowHandler(OptionsFlow):
             for rule_id, v in intervals.items()
         ]
         list_intervals.append(
-            SelectOptionDict(value=CONF_RULE_NEW_ID, label="Add new interval")
+            SelectOptionDict(value=CONF_RULE_NEW_ID, label="add_new_interval")
         )
 
         return list_intervals

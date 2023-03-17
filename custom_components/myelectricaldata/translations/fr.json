@@ -100,7 +100,7 @@
         },
         "interval_key": {
             "options": {
-                "Add new interval": "Ajouter une nouvelle plage"
+                "add_new_interval": "Ajouter une nouvelle plage"
             }
         }             
     }    

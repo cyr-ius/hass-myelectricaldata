@@ -61,7 +61,7 @@
                     "o_red":"Price RED: off-peak hour",
                     "price":"Price: full hour",
                     "off_price":"Price: off-peak hour",
-                    "interval_new_id":"Ad new offpeak range"
+                    "interval_new_id":"Add new offpeak range"
                 }
             },         
             "rules": {
@@ -97,7 +97,7 @@
         },
         "interval_key": {
             "options": {
-                "Add new interval": "Add new interval"
+                "add_new_interval": "Add new interval"
             }
         }                     
     }

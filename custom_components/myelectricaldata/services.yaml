@@ -65,6 +65,7 @@ clear_datas:
   fields:
     statistic_id:
       name: Statistic Id
+      description: set statistic_id , you pick in statistic from developer page
       required: true
       selector:
         text:
