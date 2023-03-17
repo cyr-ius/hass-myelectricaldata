@@ -8,7 +8,6 @@ import voluptuous as vol
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.statistics import clear_statistics
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -32,16 +31,16 @@ from .const import (
     DOMAIN,
     FETCH_SERVICE,
 )
-from .coordinator import EnedisDataUpdateCoordinator, async_statistics
+from .coordinator import async_statistics
 
 _LOGGER = logging.getLogger(__name__)
 
 HISTORY_SERVICE_SCHEMA = vol.Schema(
     {
-        vol.Optional(CONF_ENTRY): str,
-        vol.Optional(CONF_SERVICE): str,
-        vol.Optional(CONF_START_DATE): cv.datetime,
-        vol.Optional(CONF_END_DATE): cv.datetime,
+        vol.Required(CONF_ENTRY): str,
+        vol.Required(CONF_SERVICE): str,
+        vol.Required(CONF_START_DATE): cv.datetime,
+        vol.Required(CONF_END_DATE): cv.datetime,
         vol.Optional(CONF_PRICE): cv.positive_float,
         vol.Optional(CONF_OFF_PRICE): cv.positive_float,
     }
@@ -54,9 +53,7 @@ CLEAR_SERVICE_SCHEMA = vol.Schema(
 
 
 @callback
-async def async_services(
-    hass: HomeAssistant, entry: ConfigEntry, coordinator: EnedisDataUpdateCoordinator
-):
+async def async_services(hass: HomeAssistant):
     """Register services."""
 
     async def async_reload_history(call: ServiceCall) -> None:
@@ -73,15 +70,15 @@ async def async_services(
             else CONF_PRODUCTION
         )
 
+        options[power_mode][CONF_PRICINGS].pop("standard", {})
         if price := call.data.get(CONF_PRICE):
             options[power_mode][CONF_PRICINGS].update({"standard": {CONF_PRICE: price}})
-        else:
-            options[power_mode][CONF_PRICINGS].pop("standard", {})
 
+        options[power_mode][CONF_PRICINGS].pop("offpeak", {})
         if off_price := call.data.get(CONF_OFF_PRICE):
-            options[power_mode][CONF_PRICINGS].update({"offpeak": {CONF_PRICE: off_price}})
-        else:
-            options[power_mode][CONF_PRICINGS].pop("offpeak", {})
+            options[power_mode][CONF_PRICINGS].update(
+                {"offpeak": {CONF_PRICE: off_price}}
+            )
 
         api = EnedisByPDL(
             token=entry.config_entry.options[CONF_AUTH][CONF_TOKEN],
