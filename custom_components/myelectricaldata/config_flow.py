@@ -149,7 +149,7 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
         self._conf_rule_id: int | None = None
 
     async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None  # pylint disable=unused-argument
     ) -> FlowResult:
         """Handle options flow."""
         return self.async_show_menu(
@@ -326,7 +326,7 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
         )
 
     async def async_step_save(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None  # pylint disable=unused-argument
     ) -> FlowResult():
         """Save the updated options."""
         self._datas = default_settings(self._datas)
