@@ -7,6 +7,6 @@
   "documentation": "https://github.com/cyr-ius/hass-enedis",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/cyr-ius/hass-enedis/issues",
-  "requirements": ["myelectricaldatapy==1.7.1"],
-  "version": "2.4.0"
+  "requirements": ["myelectricaldatapy==1.7.3"],
+  "version": "2.4.1"
 }
