@@ -4,9 +4,9 @@
   "codeowners": ["@cyr-ius"],
   "config_flow": true,
   "dependencies": ["recorder"],
-  "documentation": "https://github.com/cyr-ius/hass-enedis",
+  "documentation": "https://github.com/cyr-ius/hass-myelectricaldata",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/cyr-ius/hass-enedis/issues",
+  "issue_tracker": "https://github.com/cyr-ius/hass-myelectricaldata/issues",
   "requirements": ["myelectricaldatapy==1.9.3"],
-  "version": "2.4.1"
+  "version": "1.0.0"
 }
