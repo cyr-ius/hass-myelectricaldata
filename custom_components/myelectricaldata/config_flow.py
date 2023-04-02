@@ -3,7 +3,7 @@ from datetime import datetime as dt
 import logging
 from typing import Any
 
-from myelectricaldatapy import EnedisByPDL, EnedisException
+from myelectricaldatapy import Enedis, EnedisException
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
@@ -98,7 +98,7 @@ class MyElectricalFlowHandler(ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             self._async_abort_entries_match({CONF_PDL: user_input[CONF_PDL]})
-            api = EnedisByPDL(
+            api = Enedis(
                 token=user_input[CONF_TOKEN],
                 session=async_create_clientsession(self.hass),
                 timeout=30,
