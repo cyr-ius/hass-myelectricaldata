@@ -19,6 +19,7 @@ from .const import (
     CONF_CONSUMPTION,
     CONF_END_DATE,
     CONF_ENTRY,
+    CONF_INTERVALS,
     CONF_OFF_PRICE,
     CONF_PRICE,
     CONF_PRICINGS,
@@ -31,7 +32,7 @@ from .const import (
     DOMAIN,
     FETCH_SERVICE,
 )
-from .coordinator import async_statistics
+from .coordinator import async_add_statistics, async_set_cumsums, get_attributes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,40 +64,38 @@ async def async_services(hass: HomeAssistant):
         options = entry.config_entry.options
         start_date = call.data[CONF_START_DATE]
         end_date = call.data[CONF_END_DATE]
-
-        power_mode = (
+        mode = (
             CONF_CONSUMPTION
             if service in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]
             else CONF_PRODUCTION
         )
+        has_intervals = True if options.get(mode, {}).get(CONF_INTERVALS) else False
 
-        options[power_mode][CONF_PRICINGS].pop("standard", {})
         if price := call.data.get(CONF_PRICE):
-            options[power_mode][CONF_PRICINGS].update({"standard": {CONF_PRICE: price}})
-
-        options[power_mode][CONF_PRICINGS].pop("offpeak", {})
-        if off_price := call.data.get(CONF_OFF_PRICE):
-            options[power_mode][CONF_PRICINGS].update(
-                {"offpeak": {CONF_PRICE: off_price}}
-            )
+            pricings = {"standard": {CONF_PRICE: price}}
+            if has_intervals and (off_price := call.data.get(CONF_OFF_PRICE)):
+                pricings.update({"offpeak": {CONF_PRICE: off_price}})
+            else:
+                has_intervals = False
+        else:
+            pricings = options[mode].get(CONF_PRICINGS)
 
         api = EnedisByPDL(
-            token=entry.config_entry.options[CONF_AUTH][CONF_TOKEN],
+            pdl=entry.pdl,
+            token=options[CONF_AUTH][CONF_TOKEN],
             session=async_create_clientsession(hass),
             timeout=30,
         )
 
+        modes = {mode: {"start": start_date, "end": end_date, "service": service}}
+        # Get attributes
+        attributes = get_attributes(mode, entry.pdl, has_intervals)
+        # Cumulative summary
+        await async_set_cumsums(hass, api, mode, attributes, service, pricings)
+        # Update datas
+        await api.async_update(modes=modes, force_refresh=True)
         # Add statistics in HA Database
-        await async_statistics(
-            hass=hass,
-            api=api,
-            pdl=entry.pdl,
-            service=service,
-            tempo=None,
-            no_update=True,
-            search_date=(start_date, end_date),
-            **options,
-        )
+        await async_add_statistics(hass, {mode: attributes}, api.stats)
 
     async def async_clear(call: ServiceCall) -> None:
         """Clear data in database."""
