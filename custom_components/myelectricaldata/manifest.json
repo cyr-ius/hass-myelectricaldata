@@ -7,6 +7,6 @@
   "documentation": "https://github.com/cyr-ius/hass-myelectricaldata",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/cyr-ius/hass-myelectricaldata/issues",
-  "requirements": ["myelectricaldatapy==1.9.3"],
-  "version": "1.0.1"
+  "requirements": ["myelectricaldatapy==1.9.4"],
+  "version": "1.0.2"
 }
