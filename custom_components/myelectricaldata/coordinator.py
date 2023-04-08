@@ -87,7 +87,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             # Get production
             if service := options.get(CONF_PRODUCTION, {}).get(CONF_SERVICE):
                 option = options.get(CONF_PRODUCTION, {})
-                _has_intervals = option.get(CONF_INTERVALS) is not None
+                _has_intervals = len(option.get(CONF_INTERVALS, {})) != 0
                 _pricings = option.get(CONF_PRICINGS)
                 _attrs = get_attributes(CONF_PRODUCTION, self.pdl, _has_intervals)
                 _dt_start, _dt_cost = await async_set_cumsums(
@@ -101,7 +101,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             # Get consumption
             if service := options.get(CONF_CONSUMPTION, {}).get(CONF_SERVICE):
                 option = options.get(CONF_CONSUMPTION, {})
-                _has_intervals = option.get(CONF_INTERVALS) is not None
+                _has_intervals = len(option.get(CONF_INTERVALS, {})) != 0
                 _pricings = option.get(CONF_PRICINGS)
                 _attrs = get_attributes(CONF_CONSUMPTION, self.pdl, _has_intervals)
                 _dt_start, _dt_cost = await async_set_cumsums(
