@@ -1,7 +1,6 @@
 # Enedis service.
 fetch_datas:
   name: Fetch datas
-  description: This service allows you to fetch datas
   fields:
     entry:
       name: Entry
@@ -61,7 +60,6 @@ fetch_datas:
 # Enedis service.
 clear_datas:
   name: Clear datas
-  description: This service allows you to clear datas
   fields:
     statistic_id:
       name: Statistic Id
