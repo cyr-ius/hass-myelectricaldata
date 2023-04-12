@@ -60,6 +60,7 @@ fetch_datas:
 # Enedis service.
 clear_datas:
   name: Clear datas
+  description: clear data statistics in your database
   fields:
     statistic_id:
       name: Statistic Id
