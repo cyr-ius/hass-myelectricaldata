@@ -1,11 +1,11 @@
 """Data Update Coordinator."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime as dt, timedelta
 import logging
 from typing import Any
 
-from myelectricaldatapy import EnedisByPDL, EnedisException
+from myelectricaldatapy import EnedisByPDL, EnedisException, LimitReached
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
@@ -17,7 +17,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_TOKEN, ENERGY_KILO_WATT_HOUR
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import slugify
 
 from .const import (
@@ -28,6 +28,8 @@ from .const import (
     CONF_PDL,
     CONF_PRICINGS,
     CONF_PRODUCTION,
+    CONF_RULE_END_TIME,
+    CONF_RULE_START_TIME,
     CONF_SERVICE,
     CONF_TEMPO,
     CONSUMPTION_DAILY,
@@ -35,11 +37,10 @@ from .const import (
     DOMAIN,
     PRODUCTION_DAILY,
     PRODUCTION_DETAIL,
-    CONF_RULE_START_TIME,
-    CONF_RULE_END_TIME,
 )
 
 SCAN_INTERVAL = timedelta(hours=3)
+# SCAN_INTERVAL = timedelta(minutes=1)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,17 +50,18 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Class to manage fetching data API."""
-        self.last_access: datetime | None = None
+        self.last_access: dt | None = None
         self.hass = hass
         self.entry = entry
         self.pdl: str = entry.data[CONF_PDL]
         self.access: dict[str, Any] = {}
         self.contract: dict[str, Any] = {}
-        self.last_access: datetime | None = None
+        self.last_access: dt | None = None
         self.tempo: dict[str, Any] = {}
         self.tempo_day: str | None = None
         self.ecowatt: dict[str, Any] = {}
         self.ecowatt_day: str | None = None
+        self._last_access: dt | None = None
         token: str = entry.options[CONF_AUTH][CONF_TOKEN]
 
         self.api = EnedisByPDL(
@@ -73,9 +75,9 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> list(str, str):
         """Update data via API."""
         attributes = {}
-        modes = {}
         options = self.entry.options
         try:
+            modes = {}
             # Get tempo day
             if options.get(CONF_AUTH, {}).get(CONF_TEMPO):
                 self.api.tempo_subscription(True)
@@ -91,7 +93,12 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 _pricings = option.get(CONF_PRICINGS)
                 _attrs = get_attributes(CONF_PRODUCTION, self.pdl, _has_intervals)
                 _dt_start, _dt_cost = await async_set_cumsums(
-                    self.hass, self.api, CONF_CONSUMPTION, _attrs, service, _pricings
+                    self.hass,
+                    self.api,
+                    CONF_CONSUMPTION,
+                    _attrs,
+                    service,
+                    _pricings,
                 )
                 attributes.update({CONF_PRODUCTION: _attrs})
                 modes.update(
@@ -105,13 +112,17 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 _pricings = option.get(CONF_PRICINGS)
                 _attrs = get_attributes(CONF_CONSUMPTION, self.pdl, _has_intervals)
                 _dt_start, _dt_cost = await async_set_cumsums(
-                    self.hass, self.api, CONF_CONSUMPTION, _attrs, service, _pricings
+                    self.hass,
+                    self.api,
+                    CONF_CONSUMPTION,
+                    _attrs,
+                    service,
+                    _pricings,
                 )
                 attributes.update({CONF_CONSUMPTION: _attrs})
                 modes.update(
                     {CONF_CONSUMPTION: {"start": _dt_start, "service": service}}
                 )
-
                 intervals = option.get(CONF_INTERVALS, {})
                 intervals = [
                     (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
@@ -120,7 +131,8 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 self.api.set_intervals(CONF_CONSUMPTION, intervals)
 
             # Refresh Api datas
-            await self.api.async_update(modes=modes)
+            if self._last_access is None or self._last_access != dt.now().date():
+                await self.api.async_update(modes=modes)
 
             # Add statistics in HA Database
             await async_add_statistics(self.hass, attributes, self.api.stats)
@@ -130,18 +142,29 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             self.tempo_day = self.api.tempo_day
             self.ecowatt_day = self.api.ecowatt_day
 
+        except LimitReached as error:
+            _LOGGER.error(error.args[1]["detail"])
+            self._last_access = dt.now().date()
         except EnedisException as error:
-            _LOGGER.error(error)
+            raise UpdateFailed(
+                f"{error.args[1]['detail']} ({error.args[0]})"
+            ) from error
+        else:
+            self._last_access = dt.now().date()
+        finally:
+            return await async_get_statistics(self.hass, attributes, options)
 
-        # Fill sensor value
-        statistics = {}
-        for power, attribute in attributes.items():
-            service = options.get(power, {}).get(CONF_SERVICE)
-            for statistic_id, detail in attribute.items():
-                summary, _ = await async_get_db_infos(self.hass, service, statistic_id)
-                statistics.update({detail["name"].capitalize(): summary})
-        _LOGGER.debug("[statistics] %s", statistics)
-        return statistics
+
+async def async_get_statistics(hass, attributes, options):
+    """Return statistics from database."""
+    statistics = {}
+    for power, attribute in attributes.items():
+        service = options.get(power, {}).get(CONF_SERVICE)
+        for statistic_id, detail in attribute.items():
+            summary, _ = await async_get_db_infos(hass, service, statistic_id)
+            statistics.update({detail["name"].capitalize(): summary})
+    _LOGGER.debug("[statistics] %s", statistics)
+    return statistics
 
 
 async def async_get_db_infos(hass, service, statistic_id) -> tuple[str, str]:
@@ -155,7 +178,7 @@ async def async_get_db_infos(hass, service, statistic_id) -> tuple[str, str]:
     last_stats_time = (
         None
         if not last_stats
-        else datetime.fromtimestamp(last_stats[statistic_id][0]["start"])
+        else dt.fromtimestamp(last_stats[statistic_id][0]["start"])
     )
     if last_stats_time and service in [
         PRODUCTION_DETAIL,
@@ -166,9 +189,9 @@ async def async_get_db_infos(hass, service, statistic_id) -> tuple[str, str]:
         start_date = last_stats_time + timedelta(days=1)
     else:
         start_date = (
-            datetime.now() - timedelta(days=365)
+            dt.now() - timedelta(days=365)
             if service in [PRODUCTION_DAILY, CONSUMPTION_DAILY]
-            else datetime.now() - timedelta(days=6)
+            else dt.now() - timedelta(days=6)
         )
 
     return (summary, start_date)
