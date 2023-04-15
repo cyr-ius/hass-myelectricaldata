@@ -95,7 +95,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 _dt_start, _dt_cost = await async_set_cumsums(
                     self.hass,
                     self.api,
-                    CONF_CONSUMPTION,
+                    CONF_PRODUCTION,
                     _attrs,
                     service,
                     _pricings,
@@ -162,7 +162,7 @@ async def async_get_statistics(hass, attributes, options):
         service = options.get(power, {}).get(CONF_SERVICE)
         for statistic_id, detail in attribute.items():
             summary, _ = await async_get_db_infos(hass, service, statistic_id)
-            statistics.update({detail["name"].capitalize(): summary})
+            statistics.update({detail["friendly_name"].capitalize(): summary})
     _LOGGER.debug("[statistics] %s", statistics)
     return statistics
 
@@ -172,58 +172,61 @@ async def async_get_db_infos(hass, service, statistic_id) -> tuple[str, str]:
     last_stats = await get_instance(hass).async_add_executor_job(
         get_last_statistics, hass, 1, statistic_id, True, "sum"
     )
-    summary = 0 if not last_stats else last_stats[statistic_id][0]["sum"]
-
-    # Fetch last time in database
-    last_stats_time = (
-        None
+    summary, dt_last_stats = (
+        (0, None)
         if not last_stats
-        else dt.fromtimestamp(last_stats[statistic_id][0]["start"])
+        else (
+            last_stats[statistic_id][0]["sum"],
+            dt.fromtimestamp(last_stats[statistic_id][0]["start"]),
+        )
     )
-    if last_stats_time and service in [
+
+    if dt_last_stats and service in [
         PRODUCTION_DETAIL,
         CONSUMPTION_DETAIL,
     ]:
-        start_date = last_stats_time + timedelta(hours=1)
-    elif last_stats_time:
-        start_date = last_stats_time + timedelta(days=1)
+        _dt_date = dt_last_stats + timedelta(hours=1)
+    elif dt_last_stats:
+        _dt_date = dt_last_stats + timedelta(days=1)
     else:
-        start_date = (
+        _dt_date = (
             dt.now() - timedelta(days=365)
             if service in [PRODUCTION_DAILY, CONSUMPTION_DAILY]
             else dt.now() - timedelta(days=6)
         )
 
-    return (summary, start_date)
+    _LOGGER.debug("Summary: %s, start date: %s", summary, _dt_date)
+    return (summary, _dt_date)
 
 
 def get_attributes(power: str, pdl: str, has_intervals: bool) -> dict[str, Any]:
     """Return attributes for database."""
     _attributes = {}
-    mode = "standard"
-    suffix = "full" if has_intervals else mode
+    suffix = "full" if has_intervals else "standard"
     name = f"{pdl} {power} {suffix}".capitalize()
     _attributes.update(
         {
             f"{DOMAIN}:"
             + slugify(name.lower()): {
                 "name": name,
-                "mode": mode,
+                "friendly_name": f"{power} {suffix}",
+                "mode": "standard",
             },
         }
     )
     if suffix == "full":
-        mode = "offpeak"
-        name = f"{pdl} {power} {mode}".capitalize()
+        name = f"{pdl} {power} offpeak".capitalize()
         _attributes.update(
             {
                 f"{DOMAIN}:"
                 + slugify(name.lower()): {
                     "name": name,
-                    "mode": mode,
+                    "friendly_name": f"{power} offpeak",
+                    "mode": "offpeak",
                 }
             }
         )
+    _LOGGER.debug("Attributes: %s", _attributes)
     return _attributes
 
 
@@ -246,15 +249,14 @@ async def async_set_cumsums(
         )
         mode = detail["mode"]
         sum_values[mode] = sum_value
-        _dt_start = (
-            start_date if _dt_start is None and mode == "standard" else _dt_start
-        )
+        _dt_start = start_date if _dt_start is None else _dt_start
         sum_prices[mode] = sum_cost
     if pricings:
         api.set_cumsum(power, "price", sum_prices)
         api.set_prices(power, pricings)
 
     api.set_cumsum(power, "value", sum_values)
+    _LOGGER.debug("start date: %s, cost %s", _dt_start, start_date_cost)
     return _dt_start, start_date_cost
 
 

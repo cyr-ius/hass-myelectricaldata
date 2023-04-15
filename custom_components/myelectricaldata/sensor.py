@@ -17,8 +17,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER, URL
 
-DAY_VALUES = {0: "Non disponible", 1: "VERT", 2: "ORANGE", 3: "ROUGE"}
-TEMPO_OPTIONS = ["BLUE", "WHITE", "RED"]
+DAY_VALUES = {0: "na", 1: "green", 2: "orange", 3: "red"}
+TEMPO_OPTIONS = ["blue", "white", "red"]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ async def async_setup_entry(
         entities.append(PowerSensor(coordinator, name))
     if coordinator.tempo_day:
         entities.append(TempoSensor(coordinator))
-    if coordinator.ecowatt:
+    if coordinator.ecowatt_day:
         entities.append(EcoWattSensor(coordinator))
 
     async_add_entities(entities)
@@ -49,7 +49,7 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
     _attr_state_class = STATE_CLASS_TOTAL_INCREASING
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator, sensor_name):
+    def __init__(self, coordinator, sensor_name) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         contracts = coordinator.contract
@@ -74,7 +74,7 @@ class PowerSensor(CoordinatorEntity, SensorEntity):
         }
 
     @property
-    def native_value(self):
+    def native_value(self) -> float:
         """Value power."""
         return round(float(self.coordinator.data.get(self.name)), 2)
 
@@ -85,32 +85,33 @@ class TempoSensor(CoordinatorEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_name = "Tempo day"
     _attr_has_entity_name = True
+    _attr_translation_key = "tempo"
 
-    def __init__(self, coordinator):
+    def __init__(self, coordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.pdl}_tempo_day"
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, coordinator.pdl)})
 
     @property
-    def options(self):
+    def options(self) -> list[str]:
         """Return options list."""
         return TEMPO_OPTIONS
 
     @property
-    def native_value(self):
-        """Value power."""
+    def native_value(self) -> str:
+        """Value tempo."""
         return self.coordinator.tempo_day
 
 
 class EcoWattSensor(CoordinatorEntity, SensorEntity):
     """Sensor return token expiration date."""
 
-    _attr_device_class = SensorDeviceClass.CURRENT
     _attr_name = "EcoWatt"
     _attr_has_entity_name = True
+    _attr_translation_key = "ecowatt"
 
-    def __init__(self, coordinator):
+    def __init__(self, coordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.pdl}_ecowatt"
@@ -120,6 +121,6 @@ class EcoWattSensor(CoordinatorEntity, SensorEntity):
         }
 
     @property
-    def native_value(self):
-        """Tempo day."""
+    def native_value(self) -> str:
+        """Value day."""
         return DAY_VALUES[self.coordinator.ecowatt_day.get("value", 0)]

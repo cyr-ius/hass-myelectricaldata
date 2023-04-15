@@ -88,14 +88,14 @@
     "selector": {
         "consumption_choice": {
           "options": {
-            "daily": "Journalier",
-            "detail": "Détaillé"
-          }
+                "daily": "Journalier",
+                "detail": "Détaillé"
+            }
         },
         "production_choice": {
             "options": {
-              "daily": "Journalier",
-              "detail": "Détaillé"
+                "daily": "Journalier",
+                "detail": "Détaillé"
             }
         },
         "interval_key": {
@@ -103,5 +103,24 @@
                 "add_new_interval": "Ajouter une nouvelle plage"
             }
         }             
-    }    
+    },
+    "entity": {
+        "sensor": {
+            "tempo": {
+                "state": {
+                    "blue": "Bleu",
+                    "white": "Blanc",
+                    "red": "Rouge"
+                }
+            },                  
+            "ecowatt": {
+                "state": {
+                    "na": "Non disponible",
+                    "green": "Vert",
+                    "orange": "Orange",
+                    "red": "Rouge"
+                }
+            }
+        }
+    }            
 }

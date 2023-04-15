@@ -87,7 +87,7 @@
             "options": {
                 "daily": "Daily",
                 "detail": "Detail"
-          }
+            }
         },
         "production_choice": {
             "options": {
@@ -100,5 +100,24 @@
                 "add_new_interval": "Add new interval"
             }
         }                     
-    }
+    },
+    "entity": {
+        "sensor": {
+            "tempo": {
+                "state": {
+                  "blue": "Blue",
+                  "white": "White",
+                  "red": "Red"
+                }
+            },            
+            "ecowatt": {
+                "state": {
+                    "na": "Not available",
+                    "green": "Green",
+                    "orange": "Orange",
+                    "red": "Red"
+                }
+            }
+        }
+    }    
 }
