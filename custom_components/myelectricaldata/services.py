@@ -32,12 +32,7 @@ from .const import (
     DOMAIN,
     FETCH_SERVICE,
 )
-from .coordinator import (
-    async_add_statistics,
-    async_set_cumsums,
-    get_attributes,
-    set_intervals,
-)
+from .coordinator import async_add_statistics, get_attributes, set_intervals
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -95,8 +90,8 @@ async def async_services(hass: HomeAssistant):
         modes = {mode: {"start": start_date, "end": end_date, "service": service}}
         # Get attributes
         attributes = get_attributes(mode, entry.pdl, has_intervals)
-        # Cumulative summary
-        await async_set_cumsums(hass, api, mode, attributes, service, pricings)
+        # Set prices
+        api.set_prices(mode, pricings)
         # Set intervals
         set_intervals(api, mode, options)
         # Update datas
