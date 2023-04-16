@@ -69,7 +69,7 @@ async def async_services(hass: HomeAssistant):
             if service in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]
             else CONF_PRODUCTION
         )
-        has_intervals = True if options.get(mode, {}).get(CONF_INTERVALS) else False
+        has_intervals = len(options.get(mode, {}).get(CONF_INTERVALS, {})) != 0
 
         if price := call.data.get(CONF_PRICE):
             pricings = {"standard": {CONF_PRICE: price}}
@@ -93,7 +93,7 @@ async def async_services(hass: HomeAssistant):
         # Cumulative summary
         await async_set_cumsums(hass, api, mode, attributes, service, pricings)
         # Update datas
-        await api.async_update(modes=modes, force_refresh=True)
+        await api.async_update(modes=modes)
         # Add statistics in HA Database
         await async_add_statistics(hass, {mode: attributes}, api.stats)
 
