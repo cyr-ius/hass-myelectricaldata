@@ -101,7 +101,7 @@ async def async_services(hass: HomeAssistant):
         """Clear data in database."""
         statistic_id = call.data[CONF_STATISTIC_ID]
         if not statistic_id.startswith("myelectricaldata:"):
-            _LOGGER.error("statistic_id is incorrect %s", statistic_id)
+            _LOGGER.error("Statistic_id is incorrect %s", statistic_id)
             return
         hass.async_add_executor_job(
             clear_statistics, get_instance(hass), [statistic_id]

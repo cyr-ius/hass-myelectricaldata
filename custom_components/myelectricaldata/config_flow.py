@@ -367,8 +367,7 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
 
         if step_id == CONF_CONSUMPTION:
             return await self.async_step_consumption()
-        else:
-            return await self.async_step_production()
+        return await self.async_step_production()
 
     @callback
     def _async_rules_form(self, rule_id: str, step_id: str) -> FlowResult:

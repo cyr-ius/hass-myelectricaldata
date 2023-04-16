@@ -36,7 +36,7 @@ class CountdownSensor(CoordinatorEntity, BinarySensorEntity):
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    def __init__(self, coordinator):
+    def __init__(self, coordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         access = coordinator.access
