@@ -1,6 +1,7 @@
 """Data Update Coordinator."""
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime as dt, timedelta
 import logging
 from typing import Any
@@ -14,7 +15,7 @@ from homeassistant.components.recorder.statistics import (
     get_last_statistics,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_TOKEN, ENERGY_KILO_WATT_HOUR
+from homeassistant.const import CONF_TOKEN, UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -72,67 +73,49 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         )
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
 
-    async def _async_update_data(self) -> list(str, str):
+    async def _async_update_data(self) -> dict[str, Any]:
         """Update data via API."""
         attributes = {}
         options = self.entry.options
+        modes = {}
+        # Get tempo day
+        if options.get(CONF_AUTH, {}).get(CONF_TEMPO):
+            self.api.tempo_subscription(True)
+
+        # Get ecowatt information
+        if options.get(CONF_AUTH, {}).get(CONF_ECOWATT):
+            self.api.ecowatt_subscription(True)
+
+        # Get production
+        if service := options.get(CONF_PRODUCTION, {}).get(CONF_SERVICE):
+            option = options.get(CONF_PRODUCTION, {})
+            _has_intervals = len(option.get(CONF_INTERVALS, {})) != 0
+            _pricings = option.get(CONF_PRICINGS)
+            _attrs = get_attributes(CONF_PRODUCTION, self.pdl, _has_intervals)
+            _dt_start = await async_set_cumsums(
+                self.hass, self.api, CONF_PRODUCTION, _attrs, service, _pricings
+            )
+            attributes.update({CONF_PRODUCTION: _attrs})
+            modes.update({CONF_PRODUCTION: {"start": _dt_start, "service": service}})
+
+        # Get consumption
+        if service := options.get(CONF_CONSUMPTION, {}).get(CONF_SERVICE):
+            option = options.get(CONF_CONSUMPTION, {})
+            _has_intervals = len(option.get(CONF_INTERVALS, {})) != 0
+            _pricings = option.get(CONF_PRICINGS)
+            _attrs = get_attributes(CONF_CONSUMPTION, self.pdl, _has_intervals)
+            _dt_start = await async_set_cumsums(
+                self.hass, self.api, CONF_CONSUMPTION, _attrs, service, _pricings
+            )
+            attributes.update({CONF_CONSUMPTION: _attrs})
+            modes.update({CONF_CONSUMPTION: {"start": _dt_start, "service": service}})
+            set_intervals(self.api, CONF_CONSUMPTION, options)
+
+        # Refresh Api datas
         try:
-            modes = {}
-            # Get tempo day
-            if options.get(CONF_AUTH, {}).get(CONF_TEMPO):
-                self.api.tempo_subscription(True)
-
-            # Get ecowatt information
-            if options.get(CONF_AUTH, {}).get(CONF_ECOWATT):
-                self.api.ecowatt_subscription(True)
-
-            # Get production
-            if service := options.get(CONF_PRODUCTION, {}).get(CONF_SERVICE):
-                option = options.get(CONF_PRODUCTION, {})
-                _has_intervals = len(option.get(CONF_INTERVALS, {})) != 0
-                _pricings = option.get(CONF_PRICINGS)
-                _attrs = get_attributes(CONF_PRODUCTION, self.pdl, _has_intervals)
-                _dt_start = await async_set_cumsums(
-                    self.hass, self.api, CONF_PRODUCTION, _attrs, service, _pricings
-                )
-                attributes.update({CONF_PRODUCTION: _attrs})
-                modes.update(
-                    {CONF_PRODUCTION: {"start": _dt_start, "service": service}}
-                )
-
-            # Get consumption
-            if service := options.get(CONF_CONSUMPTION, {}).get(CONF_SERVICE):
-                option = options.get(CONF_CONSUMPTION, {})
-                _has_intervals = len(option.get(CONF_INTERVALS, {})) != 0
-                _pricings = option.get(CONF_PRICINGS)
-                _attrs = get_attributes(CONF_CONSUMPTION, self.pdl, _has_intervals)
-                _dt_start = await async_set_cumsums(
-                    self.hass, self.api, CONF_CONSUMPTION, _attrs, service, _pricings
-                )
-                attributes.update({CONF_CONSUMPTION: _attrs})
-                modes.update(
-                    {CONF_CONSUMPTION: {"start": _dt_start, "service": service}}
-                )
-                intervals = option.get(CONF_INTERVALS, {})
-                intervals = [
-                    (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
-                    for interval in intervals.values()
-                ]
-                self.api.set_intervals(CONF_CONSUMPTION, intervals)
-
-            # Refresh Api datas
             if self._last_access is None or self._last_access != dt.now().date():
                 _LOGGER.debug("Refresh datas: %s", modes)
                 await self.api.async_update(modes=modes)
-
-            # Add statistics in HA Database
-            await async_add_statistics(self.hass, attributes, self.api.stats)
-
-            self.access = self.api.access
-            self.contract = self.api.contract
-            self.tempo_day = self.api.tempo_day
-            self.ecowatt_day = self.api.ecowatt_day
-
         except LimitReached as error:
             _LOGGER.error(error.args[1]["detail"])
             self._last_access = dt.now().date()
@@ -142,14 +125,24 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             ) from error
         else:
             self._last_access = dt.now().date()
-        finally:
-            return await async_get_statistics(self.hass, attributes, options)
+
+        # Add statistics in HA Database
+        await async_add_statistics(self.hass, attributes, self.api.stats)
+
+        self.access = self.api.access
+        self.contract = self.api.contract
+        self.tempo_day = self.api.tempo_day
+        self.ecowatt_day = self.api.ecowatt_day
+
+        return await async_get_statistics(self.hass, attributes, options)
 
 
-async def async_get_statistics(hass, attributes, options):
+async def async_get_statistics(
+    hass: HomeAssistant, attributes: dict[str, Any], options: Mapping[str, Any]
+) -> dict[str, Any]:
     """Return statistics from database."""
     statistics = {}
-    for power, attribute in attributes.items():
+    for attribute in attributes.values():
         for statistic_id, detail in attribute.items():
             summary, _ = await async_get_db_infos(hass, statistic_id)
             statistics.update({detail["friendly_name"].capitalize(): summary})
@@ -157,7 +150,7 @@ async def async_get_statistics(hass, attributes, options):
     return statistics
 
 
-async def async_get_db_infos(hass, statistic_id) -> tuple[str, dt]:
+async def async_get_db_infos(hass: HomeAssistant, statistic_id: str) -> tuple[str, dt]:
     """Fetch last information in database."""
     last_stats = await get_instance(hass).async_add_executor_job(
         get_last_statistics, hass, 1, statistic_id, True, "sum"
@@ -174,30 +167,30 @@ async def async_get_db_infos(hass, statistic_id) -> tuple[str, dt]:
     return (last_summary, dt_last_stat)
 
 
-def get_attributes(power: str, pdl: str, has_intervals: bool) -> dict[str, Any]:
+def get_attributes(mode: str, pdl: str, has_intervals: bool) -> dict[str, Any]:
     """Return attributes for database."""
     _attributes = {}
     suffix = "full" if has_intervals else "standard"
-    name = f"{pdl} {power} {suffix}".capitalize()
+    name = f"{pdl} {mode} {suffix}".capitalize()
     _attributes.update(
         {
             f"{DOMAIN}:"
             + slugify(name.lower()): {
                 "name": name,
-                "friendly_name": f"{power} {suffix}",
-                "mode": "standard",
+                "friendly_name": f"{mode} {suffix}",
+                "note": "standard",
             },
         }
     )
     if suffix == "full":
-        name = f"{pdl} {power} offpeak".capitalize()
+        name = f"{pdl} {mode} offpeak".capitalize()
         _attributes.update(
             {
                 f"{DOMAIN}:"
                 + slugify(name.lower()): {
                     "name": name,
-                    "friendly_name": f"{power} offpeak",
-                    "mode": "offpeak",
+                    "friendly_name": f"{mode} offpeak",
+                    "note": "offpeak",
                 }
             }
         )
@@ -205,10 +198,20 @@ def get_attributes(power: str, pdl: str, has_intervals: bool) -> dict[str, Any]:
     return _attributes
 
 
+def set_intervals(api: EnedisByPDL, mode: str, options: dict[str, Any]) -> None:
+    """Set intervals."""
+    intervals = options.get(mode, {}).get(CONF_INTERVALS, {})
+    intervals = [
+        (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
+        for interval in intervals.values()
+    ]
+    api.set_intervals(mode, intervals)
+
+
 async def async_set_cumsums(
     hass: HomeAssistant,
     api: EnedisByPDL,
-    power: str,
+    mode: str,
     attributes: dict[str, Any],
     service: str,
     pricings: dict[str, Any],
@@ -220,9 +223,9 @@ async def async_set_cumsums(
     for statistic_id, detail in attributes.items():
         sum_value, _dt_value = await async_get_db_infos(hass, statistic_id)
         sum_cost, _dt_cost = await async_get_db_infos(hass, f"{statistic_id}_cost")
-        mode = detail["mode"]
-        sum_values[mode] = sum_value
-        sum_prices[mode] = sum_cost
+        note = detail["note"]
+        sum_values[note] = sum_value
+        sum_prices[note] = sum_cost
 
         _dt_last = _dt_value if _dt_last is None else _dt_last
         if _dt_value != _dt_cost:
@@ -231,10 +234,10 @@ async def async_set_cumsums(
             )
 
     # Set cumulative value and price
-    api.set_cumsum(power, "value", sum_values)
+    api.set_cumsum(mode, "value", sum_values)
     if pricings:
-        api.set_cumsum(power, "price", sum_prices)
-        api.set_prices(power, pricings)
+        api.set_cumsum(mode, "price", sum_prices)
+        api.set_prices(mode, pricings)
 
     # Calculate the next date
     if _dt_last and service in [
@@ -251,7 +254,7 @@ async def async_set_cumsums(
             else dt.now() - timedelta(days=6)
         )
 
-    _LOGGER.debug("[cumsum] power: %s, next date: %s", power, _dt_next)
+    _LOGGER.debug("[cumsum] mode: %s, next date: %s", mode, _dt_next)
     return _dt_next
 
 
@@ -259,16 +262,16 @@ async def async_add_statistics(
     hass: HomeAssistant,
     extended_attrs: dict[str, Any],
     datas_collected: dict[str, Any],
-):
+) -> None:
     """Add statistics database."""
-    for power, offsets in extended_attrs.items():
+    for mode, offsets in extended_attrs.items():
         for statistic_id, detail in offsets.items():
             name = detail["name"]
-            mode = detail["mode"]
+            note = detail["note"]
             stats = []
             costs = []
-            for datas in datas_collected.get(power, []):
-                if datas["notes"] != mode:
+            for datas in datas_collected.get(mode, []):
+                if datas["notes"] != note:
                     continue
                 _LOGGER.debug(datas)
                 if datas.get("value"):
@@ -296,7 +299,7 @@ async def async_add_statistics(
                     name=name,
                     source=DOMAIN,
                     statistic_id=statistic_id,
-                    unit_of_measurement=ENERGY_KILO_WATT_HOUR,
+                    unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
                 )
                 hass.async_add_executor_job(
                     async_add_external_statistics, hass, metadata, stats
