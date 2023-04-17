@@ -1,7 +1,6 @@
 """Data Update Coordinator."""
 from __future__ import annotations
 
-from collections.abc import Mapping
 from datetime import datetime as dt, timedelta
 import logging
 from typing import Any
@@ -41,7 +40,6 @@ from .const import (
 )
 
 SCAN_INTERVAL = timedelta(hours=3)
-# SCAN_INTERVAL = timedelta(minutes=1)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -93,11 +91,11 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         for mode, opt in dict_opts.items():
             service = opt.get(CONF_SERVICE)
-            intervals = prepare_intervals(self.api, mode, options)
+            intervals = prepare_intervals(mode, options)
             has_intervals = len(intervals) != 0
             attrs = get_attributes(mode, self.pdl, has_intervals)
             dt_start, cum_values, cum_prices = await get_last_infos(
-                self.hass, self.api, attrs, service
+                self.hass, attrs, service
             )
             attributes.update({mode: attrs})
             self.api.set_collects(
@@ -128,11 +126,11 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.tempo_day = self.api.tempo_day
         self.ecowatt_day = self.api.ecowatt_day
 
-        return await async_get_statistics(self.hass, attributes, options)
+        return await async_get_statistics(self.hass, attributes)
 
 
 async def async_get_statistics(
-    hass: HomeAssistant, attributes: dict[str, Any], options: Mapping[str, Any]
+    hass: HomeAssistant, attributes: dict[str, Any]
 ) -> dict[str, Any]:
     """Return statistics from database."""
     statistics = {}
@@ -192,7 +190,7 @@ def get_attributes(mode: str, pdl: str, has_intervals: bool) -> dict[str, Any]:
     return _attributes
 
 
-def prepare_intervals(api: EnedisByPDL, mode: str, options: dict[str, Any]) -> None:
+def prepare_intervals(mode: str, options: dict[str, Any]) -> None:
     """Set intervals."""
     intervals = options.get(mode, {}).get(CONF_INTERVALS, {})
     intervals = [
@@ -203,7 +201,7 @@ def prepare_intervals(api: EnedisByPDL, mode: str, options: dict[str, Any]) -> N
 
 
 async def get_last_infos(
-    hass: HomeAssistant, api: EnedisByPDL, attributes: dict[str, Any], service: str
+    hass: HomeAssistant, attributes: dict[str, Any], service: str
 ) -> tuple[dt, float, float]:
     """Set default api."""
     sum_values = {}
