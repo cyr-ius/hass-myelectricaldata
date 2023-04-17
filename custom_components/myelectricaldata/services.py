@@ -67,7 +67,9 @@ async def async_services(hass: HomeAssistant):
     """Register services."""
 
     @callback
-    async def async_reload_history(call: ServiceCall) -> None:
+    async def async_reload_history(  # pylint: disable=too-many-function-args
+        call: ServiceCall,
+    ) -> None:
         """Load datas in statics table."""
         entry = hass.data[DOMAIN].get(call.data[CONF_ENTRY])
         service = call.data[CONF_SERVICE]
