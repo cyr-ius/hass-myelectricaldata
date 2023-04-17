@@ -1,17 +1,23 @@
 """Helper module."""
 from __future__ import annotations
 
+from datetime import datetime as dt
 import logging
 
 from myelectricaldatapy import EnedisByPDL
 import voluptuous as vol
 
 from homeassistant.components.recorder import get_instance
-from homeassistant.components.recorder.statistics import clear_statistics
-from homeassistant.const import CONF_TOKEN
+from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
+from homeassistant.components.recorder.statistics import (
+    async_add_external_statistics,
+    statistics_during_period,
+)
+from homeassistant.const import CONF_TOKEN, UnitOfEnergy
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import homeassistant.helpers.config_validation as cv
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CLEAR_SERVICE,
@@ -32,7 +38,11 @@ from .const import (
     DOMAIN,
     FETCH_SERVICE,
 )
-from .coordinator import async_add_statistics, get_attributes, set_intervals
+from .coordinator import (
+    get_attributes,
+    prepare_intervals,
+    async_add_statistics,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,10 +63,10 @@ CLEAR_SERVICE_SCHEMA = vol.Schema(
 )
 
 
-@callback
 async def async_services(hass: HomeAssistant):
     """Register services."""
 
+    @callback
     async def async_reload_history(call: ServiceCall) -> None:
         """Load datas in statics table."""
         entry = hass.data[DOMAIN].get(call.data[CONF_ENTRY])
@@ -86,28 +96,78 @@ async def async_services(hass: HomeAssistant):
             session=async_create_clientsession(hass),
             timeout=30,
         )
-
-        modes = {mode: {"start": start_date, "end": end_date, "service": service}}
+        # Get intervals
+        intervals = prepare_intervals(api, mode, options)
+        has_intervals = len(intervals) != 0
         # Get attributes
         attributes = get_attributes(mode, entry.pdl, has_intervals)
-        # Set prices
-        api.set_prices(mode, pricings)
-        # Set intervals
-        set_intervals(api, mode, options)
+        # Set collector
+        api.set_collects(
+            service,
+            start=start_date,
+            end=end_date,
+            intervals=intervals,
+            prices=pricings,
+        )
         # Update datas
-        await api.async_update(modes=modes)
+        await api.async_update_collects()
         # Add statistics in HA Database
         await async_add_statistics(hass, {mode: attributes}, api.stats)
+        await _async_normalize_datas(attributes)
 
+    @callback
     async def async_clear(call: ServiceCall) -> None:
         """Clear data in database."""
         statistic_id = call.data[CONF_STATISTIC_ID]
         if not statistic_id.startswith("myelectricaldata:"):
             _LOGGER.error("Statistic_id is incorrect %s", statistic_id)
             return
-        hass.async_add_executor_job(
-            clear_statistics, get_instance(hass), [statistic_id]
-        )
+        get_instance(hass).async_clear_statistics([statistic_id])
+
+    async def _async_normalize_datas(attributes) -> None:
+        """Fix statistics datas."""
+        for statistic_id, attrs in attributes.items():
+            rslt = await get_instance(hass).async_add_executor_job(
+                statistics_during_period,
+                hass,
+                dt_util.as_local(dt.fromtimestamp(0)),
+                dt_util.now(),
+                {statistic_id},
+                "hour",
+                UnitOfEnergy.KILO_WATT_HOUR,
+                {"state", "sum"},
+            )
+
+            metadata = StatisticMetaData(
+                has_mean=False,
+                has_sum=True,
+                name=attrs["friendly_name"],
+                source=DOMAIN,
+                statistic_id=statistic_id,
+                unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+            )
+
+            for values in rslt.values():
+                vsum = None
+                stats = []
+                for val in values:
+                    vsum = (
+                        val.get("state", 0)
+                        if vsum is None
+                        else vsum + val.get("state", 0)
+                    )
+                    stats.append(
+                        StatisticData(
+                            start=dt_util.utc_from_timestamp(val["start"]),
+                            state=val["state"],
+                            sum=vsum,
+                        )
+                    )
+            instance = get_instance(hass)
+            instance.async_clear_statistics([statistic_id])
+            await instance.async_add_executor_job(
+                async_add_external_statistics, hass, metadata, stats
+            )
 
     hass.services.async_register(
         DOMAIN, FETCH_SERVICE, async_reload_history, schema=HISTORY_SERVICE_SCHEMA
