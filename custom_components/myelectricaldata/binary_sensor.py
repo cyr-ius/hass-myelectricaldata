@@ -48,6 +48,8 @@ class CountdownSensor(CoordinatorEntity, BinarySensorEntity):
             "Quota": access.get("quota_limit"),
             "Quota reached": access.get("quota_reached"),
             "Expiration date": access.get("consent_expiration_date"),
+            "Last access": coordinator.last_access,
+            "Last refresh": coordinator.last_refresh,
         }
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, coordinator.pdl)})
 

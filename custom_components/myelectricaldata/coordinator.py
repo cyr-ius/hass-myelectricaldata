@@ -113,7 +113,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         # Refresh Api datas
         try:
-            # await self.api.async_update()
+            await self.api.async_update()
             _LOGGER.debug("Refresh datas: %s", self.api.last_refresh)
         except LimitReached as error:
             _LOGGER.error(error.args[1]["detail"])
@@ -129,6 +129,8 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.contract = self.api.contract
         self.tempo_day = self.api.tempo_day
         self.ecowatt_day = self.api.ecowatt_day
+        self.last_access = self.api.last_access
+        self.last_refresh = self.api.last_refresh
 
         return await async_get_statistics(self.hass, attributes)
 
