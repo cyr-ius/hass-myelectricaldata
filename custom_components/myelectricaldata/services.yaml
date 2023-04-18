@@ -30,7 +30,6 @@ fetch_datas:
     start_date:
       name: Start Date
       description: Recovery start date
-      description: Start date
       required: true
       selector:
         datetime:
