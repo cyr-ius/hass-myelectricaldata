@@ -73,8 +73,6 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via API."""
-        attributes = {}
-        dict_opts = {}
         options = self.entry.options
         # Get tempo day
         if options.get(CONF_AUTH, {}).get(CONF_TEMPO):
@@ -84,20 +82,25 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         if options.get(CONF_AUTH, {}).get(CONF_ECOWATT):
             self.api.ecowatt_subscription(True)
 
-        if options.get(CONF_PRODUCTION, {}).get(CONF_SERVICE):
-            dict_opts.update({CONF_PRODUCTION: options[CONF_PRODUCTION]})
-        if options.get(CONF_CONSUMPTION, {}).get(CONF_SERVICE):
-            dict_opts.update({CONF_CONSUMPTION: options[CONF_CONSUMPTION]})
+        dict_opts = dict(
+            filter(
+                lambda x: x[0] in [CONF_PRODUCTION, CONF_CONSUMPTION]
+                and x[1].get(CONF_SERVICE),
+                options.items(),
+            )
+        )
 
+        attributes = {}
         for mode, opt in dict_opts.items():
             service = opt.get(CONF_SERVICE)
-            intervals = prepare_intervals(mode, options)
-            has_intervals = len(intervals) != 0
-            attrs = get_attributes(mode, self.pdl, has_intervals)
-            dt_start, cum_values, cum_prices = await get_last_infos(
+            intervals = [
+                (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
+                for interval in opt.get(CONF_INTERVALS, {}).values()
+            ]
+            attrs = map_attributes(mode, self.pdl, intervals)
+            dt_start, cum_values, cum_prices = await async_get_last_infos(
                 self.hass, attrs, service
             )
-            attributes.update({mode: attrs})
             self.api.set_collects(
                 service=service,
                 start=dt_start,
@@ -106,6 +109,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 cum_value=cum_values,
                 cum_price=cum_prices,
             )
+            attributes.update(attrs)
 
         # Refresh Api datas
         try:
@@ -134,10 +138,9 @@ async def async_get_statistics(
 ) -> dict[str, Any]:
     """Return statistics from database."""
     statistics = {}
-    for attribute in attributes.values():
-        for statistic_id, detail in attribute.items():
-            summary, _ = await async_get_db_infos(hass, statistic_id)
-            statistics.update({detail["friendly_name"].capitalize(): summary})
+    for statistic_id, detail in attributes.items():
+        summary, _ = await async_get_db_infos(hass, statistic_id)
+        statistics.update({detail["friendly_name"].capitalize(): summary})
     _LOGGER.debug("[statistics] %s", statistics)
     return statistics
 
@@ -159,48 +162,7 @@ async def async_get_db_infos(hass: HomeAssistant, statistic_id: str) -> tuple[st
     return (last_summary, dt_last_stat)
 
 
-def get_attributes(mode: str, pdl: str, has_intervals: bool) -> dict[str, Any]:
-    """Return attributes for database."""
-    _attributes = {}
-    suffix = "full" if has_intervals else "standard"
-    name = f"{pdl} {mode} {suffix}".capitalize()
-    _attributes.update(
-        {
-            f"{DOMAIN}:"
-            + slugify(name.lower()): {
-                "name": name,
-                "friendly_name": f"{mode} {suffix}",
-                "note": "standard",
-            },
-        }
-    )
-    if suffix == "full":
-        name = f"{pdl} {mode} offpeak".capitalize()
-        _attributes.update(
-            {
-                f"{DOMAIN}:"
-                + slugify(name.lower()): {
-                    "name": name,
-                    "friendly_name": f"{mode} offpeak",
-                    "note": "offpeak",
-                }
-            }
-        )
-    _LOGGER.debug("Attributes: %s", _attributes)
-    return _attributes
-
-
-def prepare_intervals(mode: str, options: dict[str, Any]) -> None:
-    """Set intervals."""
-    intervals = options.get(mode, {}).get(CONF_INTERVALS, {})
-    intervals = [
-        (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
-        for interval in intervals.values()
-    ]
-    return intervals
-
-
-async def get_last_infos(
+async def async_get_last_infos(
     hass: HomeAssistant, attributes: dict[str, Any], service: str
 ) -> tuple[dt, float, float]:
     """Set default api."""
@@ -241,60 +203,93 @@ async def get_last_infos(
 
 async def async_add_statistics(
     hass: HomeAssistant,
-    extended_attrs: dict[str, Any],
+    attributes: dict[str, Any],
     datas_collected: dict[str, Any],
 ) -> None:
     """Add statistics database."""
-    for mode, offsets in extended_attrs.items():
-        for statistic_id, detail in offsets.items():
-            name = detail["name"]
-            note = detail["note"]
-            stats = []
-            costs = []
-            for datas in datas_collected.get(mode, []):
-                if datas["notes"] != note:
-                    continue
-                _LOGGER.debug(datas)
-                if datas.get("value"):
-                    stats.append(
-                        StatisticData(
-                            start=datas["date"],
-                            state=datas["value"],
-                            sum=datas["sum_value"],
-                        )
+    for statistic_id, detail in attributes.items():
+        name = detail["name"]
+        note = detail["note"]
+        mode = detail["mode"]
+        stats = []
+        costs = []
+        for datas in datas_collected.get(mode, []):
+            if datas["notes"] != note:
+                continue
+            _LOGGER.debug(datas)
+            if datas.get("value"):
+                stats.append(
+                    StatisticData(
+                        start=datas["date"],
+                        state=datas["value"],
+                        sum=datas["sum_value"],
                     )
-                if datas.get("price"):
-                    costs.append(
-                        StatisticData(
-                            start=datas["date"],
-                            state=datas["price"],
-                            sum=datas["sum_price"],
-                        )
+                )
+            if datas.get("price"):
+                costs.append(
+                    StatisticData(
+                        start=datas["date"],
+                        state=datas["price"],
+                        sum=datas["sum_price"],
                     )
+                )
 
-            if stats:
-                _LOGGER.debug("Add %s stat in table", mode)
-                metadata = StatisticMetaData(
-                    has_mean=False,
-                    has_sum=True,
-                    name=name,
-                    source=DOMAIN,
-                    statistic_id=statistic_id,
-                    unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-                )
-                hass.async_add_executor_job(
-                    async_add_external_statistics, hass, metadata, stats
-                )
-            if costs:
-                _LOGGER.debug("Add %s cost in table", mode)
-                metacost = StatisticMetaData(
-                    has_mean=False,
-                    has_sum=True,
-                    name=f"{name} cost",
-                    source=DOMAIN,
-                    statistic_id=f"{statistic_id}_cost",
-                    unit_of_measurement="EUR",
-                )
-                hass.async_add_executor_job(
-                    async_add_external_statistics, hass, metacost, costs
-                )
+        if stats:
+            _LOGGER.debug("Add %s stat in table", mode)
+            metadata = StatisticMetaData(
+                has_mean=False,
+                has_sum=True,
+                name=name,
+                source=DOMAIN,
+                statistic_id=statistic_id,
+                unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+            )
+            hass.async_add_executor_job(
+                async_add_external_statistics, hass, metadata, stats
+            )
+        if costs:
+            _LOGGER.debug("Add %s cost in table", mode)
+            metacost = StatisticMetaData(
+                has_mean=False,
+                has_sum=True,
+                name=f"{name} cost",
+                source=DOMAIN,
+                statistic_id=f"{statistic_id}_cost",
+                unit_of_measurement="EUR",
+            )
+            hass.async_add_executor_job(
+                async_add_external_statistics, hass, metacost, costs
+            )
+
+
+def map_attributes(mode: str, pdl: str, intervals: list[Any]) -> dict[str, Any]:
+    """Return attributes for database."""
+    _attributes = {}
+    suffix = "full" if len(intervals) != 0 else "standard"
+    name = f"{pdl} {mode} {suffix}".capitalize()
+    _attributes.update(
+        {
+            f"{DOMAIN}:"
+            + slugify(name.lower()): {
+                "name": name,
+                "friendly_name": f"{mode} {suffix}",
+                "note": "standard",
+                "mode": mode,
+            },
+        }
+    )
+    if suffix == "full":
+        name = f"{pdl} {mode} offpeak".capitalize()
+        _attributes.update(
+            {
+                f"{DOMAIN}:"
+                + slugify(name.lower()): {
+                    "name": name,
+                    "friendly_name": f"{mode} offpeak",
+                    "note": "offpeak",
+                    "mode": mode,
+                }
+            }
+        )
+    _LOGGER.debug("Attributes: %s", _attributes)
+    return _attributes

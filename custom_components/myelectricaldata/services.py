@@ -30,6 +30,8 @@ from .const import (
     CONF_PRICE,
     CONF_PRICINGS,
     CONF_PRODUCTION,
+    CONF_RULE_END_TIME,
+    CONF_RULE_START_TIME,
     CONF_SERVICE,
     CONF_START_DATE,
     CONF_STATISTIC_ID,
@@ -38,11 +40,7 @@ from .const import (
     DOMAIN,
     FETCH_SERVICE,
 )
-from .coordinator import (
-    get_attributes,
-    prepare_intervals,
-    async_add_statistics,
-)
+from .coordinator import async_add_statistics, map_attributes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -81,16 +79,24 @@ async def async_services(hass: HomeAssistant):
             if service in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]
             else CONF_PRODUCTION
         )
-        has_intervals = len(options.get(mode, {}).get(CONF_INTERVALS, {})) != 0
+        intervals = options.get(mode, {}).get(CONF_INTERVALS, {})
+        intervals = [
+            (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
+            for interval in intervals.values()
+        ]
 
+        # Set price
         if price := call.data.get(CONF_PRICE):
-            pricings = {"standard": {CONF_PRICE: price}}
-            if has_intervals and (off_price := call.data.get(CONF_OFF_PRICE)):
-                pricings.update({"offpeak": {CONF_PRICE: off_price}})
+            prices = {"standard": {CONF_PRICE: price}}
+            if len(intervals) != 0 and (off_price := call.data.get(CONF_OFF_PRICE)):
+                prices.update({"offpeak": {CONF_PRICE: off_price}})
             else:
-                has_intervals = False
+                intervals = []
         else:
-            pricings = options[mode].get(CONF_PRICINGS)
+            prices = options[mode].get(CONF_PRICINGS)
+
+        # Get attributes
+        attributes = map_attributes(mode, entry.pdl, intervals)
 
         api = EnedisByPDL(
             pdl=entry.pdl,
@@ -98,23 +104,18 @@ async def async_services(hass: HomeAssistant):
             session=async_create_clientsession(hass),
             timeout=30,
         )
-        # Get intervals
-        intervals = prepare_intervals(api, mode, options)
-        has_intervals = len(intervals) != 0
-        # Get attributes
-        attributes = get_attributes(mode, entry.pdl, has_intervals)
         # Set collector
         api.set_collects(
             service,
             start=start_date,
             end=end_date,
             intervals=intervals,
-            prices=pricings,
+            prices=prices,
         )
         # Update datas
         await api.async_update_collects()
         # Add statistics in HA Database
-        await async_add_statistics(hass, {mode: attributes}, api.stats)
+        await async_add_statistics(hass, attributes, api.stats)
         await _async_normalize_datas(attributes)
 
     @callback
