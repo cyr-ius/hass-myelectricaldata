@@ -103,7 +103,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             )
             self.api.set_collects(
                 service=service,
-                start=dt_start,
+                start=next_date(dt_start, service),
                 intervals=intervals,
                 prices=opt.get(CONF_PRICINGS),
                 cum_value=cum_values,
@@ -160,7 +160,9 @@ async def async_get_db_infos(hass: HomeAssistant, statistic_id: str) -> tuple[st
             dt.fromtimestamp(last_stats[statistic_id][0]["start"]),
         )
     )
-    _LOGGER.debug("[database] summary: %s, last date: %s", last_summary, dt_last_stat)
+    _LOGGER.debug(
+        "[%s] summary: %s, last date: %s", statistic_id, last_summary, dt_last_stat
+    )
     return (last_summary, dt_last_stat)
 
 
@@ -184,23 +186,13 @@ async def async_get_last_infos(
                 "The energy value has a date different from the date collected to calculate the cost"
             )
 
-    # Calculate the next date
-    if _dt_last and service in [
-        PRODUCTION_DETAIL,
-        CONSUMPTION_DETAIL,
-    ]:
-        _dt_next = _dt_last + timedelta(hours=1)
-    elif _dt_last:
-        _dt_next = _dt_last + timedelta(days=1)
-    else:
-        _dt_next = (
-            dt.now() - timedelta(days=365)
-            if service in [PRODUCTION_DAILY, CONSUMPTION_DAILY]
-            else dt.now() - timedelta(days=6)
-        )
-
-    _LOGGER.debug("[cumsum] next date: %s", _dt_next)
-    return _dt_next, sum_values, sum_prices
+    _LOGGER.debug(
+        "[infosdb] last date: %s, sum value: %s, sum price: %s",
+        _dt_last,
+        sum_values,
+        sum_prices,
+    )
+    return _dt_last, sum_values, sum_prices
 
 
 async def async_add_statistics(
@@ -237,7 +229,7 @@ async def async_add_statistics(
                 )
 
         if stats:
-            _LOGGER.debug("Add %s stat in table", mode)
+            _LOGGER.debug("[addstats] Add %s stat in table", mode)
             metadata = StatisticMetaData(
                 has_mean=False,
                 has_sum=True,
@@ -250,7 +242,7 @@ async def async_add_statistics(
                 async_add_external_statistics, hass, metadata, stats
             )
         if costs:
-            _LOGGER.debug("Add %s cost in table", mode)
+            _LOGGER.debug("[addstats] Add %s cost in table", mode)
             metacost = StatisticMetaData(
                 has_mean=False,
                 has_sum=True,
@@ -262,6 +254,19 @@ async def async_add_statistics(
             hass.async_add_executor_job(
                 async_add_external_statistics, hass, metacost, costs
             )
+
+
+def next_date(date_: dt | None, service: str) -> dt:
+    """Return next date."""
+    if date_ and service in [PRODUCTION_DETAIL, CONSUMPTION_DETAIL]:
+        return date_ + timedelta(hours=1)
+    elif date_:
+        return date_ + timedelta(days=1)
+    return (
+        dt.now() - timedelta(days=1095)
+        if service in [PRODUCTION_DAILY, CONSUMPTION_DAILY]
+        else dt.now() - timedelta(days=7)
+    )
 
 
 def map_attributes(mode: str, pdl: str, intervals: list[Any]) -> dict[str, Any]:
@@ -293,5 +298,5 @@ def map_attributes(mode: str, pdl: str, intervals: list[Any]) -> dict[str, Any]:
                 }
             }
         )
-    _LOGGER.debug("Attributes: %s", _attributes)
+    _LOGGER.debug("[attributes] %s", _attributes)
     return _attributes
