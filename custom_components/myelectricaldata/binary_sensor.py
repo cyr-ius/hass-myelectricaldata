@@ -67,7 +67,7 @@ class CountdownSensor(
             "Quota": self.coordinator.access.get("quota_limit"),
             "Quota reached": self.coordinator.access.get("quota_reached"),
             "Expiration date": self.coordinator.access.get("consent_expiration_date"),
-            "Last access": self.oordinator.last_access,
+            "Last access": self.coordinator.last_access,
             "Last refresh": self.coordinator.last_refresh,
         }
         super()._handle_coordinator_update()

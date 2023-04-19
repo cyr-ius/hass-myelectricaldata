@@ -52,7 +52,7 @@
             },               
             "consumption": {
                 "title": "Consommation",
-                "description": "Les plages de horaires sont optionnelles. Mais pour leurs usages, merci de mettre le service en mode 'detail'",
+                "description": "Les plages horaires sont optionnelles. Pour leurs usages, merci de mettre le service en mode 'Detail'",
                 "data": {
                     "service": "Service",
                     "s_blue": "BLEU: Tarif heures pleines",
@@ -87,7 +87,7 @@
     },
     "selector": {
         "consumption_choice": {
-          "options": {
+           "options": {
                 "daily": "Journalier",
                 "detail": "Détaillé"
             }
