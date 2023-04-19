@@ -5,8 +5,10 @@
   "config_flow": true,
   "dependencies": ["recorder"],
   "documentation": "https://github.com/cyr-ius/hass-myelectricaldata",
+  "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/cyr-ius/hass-myelectricaldata/issues",
+  "loggers": ["myelectricaldatapy"],
   "requirements": ["myelectricaldatapy==2.0.0"],
-  "version": "1.1.4"
+  "version": "1.1.5"
 }
