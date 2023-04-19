@@ -86,7 +86,7 @@ class PowerSensor(CoordinatorEntity[EnedisDataUpdateCoordinator], SensorEntity):
                 "last_distribution_tariff_change_date"
             ),
         }
-        self.async_write_ha_state()
+        super()._handle_coordinator_update()
 
 
 class TempoSensor(CoordinatorEntity, SensorEntity):
@@ -109,7 +109,7 @@ class TempoSensor(CoordinatorEntity, SensorEntity):
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         self._attr_native_value = self.coordinator.tempo_day
-        self.async_write_ha_state()
+        super()._handle_coordinator_update()
 
 
 class EcoWattSensor(CoordinatorEntity, SensorEntity):

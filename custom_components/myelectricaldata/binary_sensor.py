@@ -70,4 +70,4 @@ class CountdownSensor(
             "Last access": self.oordinator.last_access,
             "Last refresh": self.coordinator.last_refresh,
         }
-        self.async_write_ha_state()
+        super()._handle_coordinator_update()
