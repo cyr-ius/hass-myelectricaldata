@@ -49,18 +49,17 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Class to manage fetching data API."""
-        self.last_access: dt | None = None
-        self.hass = hass
-        self.entry = entry
-        self.pdl: str = entry.data[CONF_PDL]
         self.access: dict[str, Any] = {}
         self.contract: dict[str, Any] = {}
-        self.last_access: dt | None = None
-        self.tempo: dict[str, Any] = {}
-        self.tempo_day: str | None = None
-        self.ecowatt: dict[str, Any] = {}
         self.ecowatt_day: str | None = None
-        self._last_access: dt | None = None
+        self.ecowatt: dict[str, Any] = {}
+        self.entry = entry
+        self.hass = hass
+        self.last_access: dt | None = None
+        self.last_refresh: dt | None = None
+        self.pdl: str = entry.data[CONF_PDL]
+        self.tempo_day: str | None = None
+        self.tempo: dict[str, Any] = {}
         token: str = entry.options[CONF_AUTH][CONF_TOKEN]
 
         self.api = EnedisByPDL(
@@ -99,7 +98,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             ]
             attrs = map_attributes(mode, self.pdl, intervals)
             dt_start, cum_values, cum_prices = await async_get_last_infos(
-                self.hass, attrs, service
+                self.hass, attrs
             )
             self.api.set_collects(
                 service=service,
@@ -167,7 +166,7 @@ async def async_get_db_infos(hass: HomeAssistant, statistic_id: str) -> tuple[st
 
 
 async def async_get_last_infos(
-    hass: HomeAssistant, attributes: dict[str, Any], service: str
+    hass: HomeAssistant, attributes: dict[str, Any]
 ) -> tuple[dt, float, float]:
     """Set default api."""
     sum_values = {}
