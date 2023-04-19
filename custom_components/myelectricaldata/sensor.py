@@ -61,19 +61,19 @@ class PowerSensor(CoordinatorEntity[EnedisDataUpdateCoordinator], SensorEntity):
             name=f"Linky ({coordinator.pdl})",
             configuration_url=URL,
             manufacturer=MANUFACTURER,
-            model=coordinator.contracts.get("subscribed_power"),
+            model=coordinator.contract.get("subscribed_power"),
             suggested_area="Garage",
         )
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        contracts = self.coordinator.contract
+        contract = self.coordinator.contract
         self._attr_native_value = round(float(self.coordinator.data.get(self.name)), 2)
         self._attr_extra_state_attributes = {
-            "offpeak hours": contracts.get("offpeak_hours"),
-            "last activation date": contracts.get("last_activation_date"),
-            "last tariff changedate": contracts.get(
+            "offpeak hours": contract.get("offpeak_hours"),
+            "last activation date": contract.get("last_activation_date"),
+            "last tariff changedate": contract.get(
                 "last_distribution_tariff_change_date"
             ),
         }
