@@ -8,12 +8,13 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .coordinator import EnedisDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,7 +29,9 @@ async def async_setup_entry(
     async_add_entities([CountdownSensor(coordinator)])
 
 
-class CountdownSensor(CoordinatorEntity, BinarySensorEntity):
+class CountdownSensor(
+    CoordinatorEntity[EnedisDataUpdateCoordinator], BinarySensorEntity
+):
     """Sensor return token expiration date."""
 
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
@@ -39,8 +42,14 @@ class CountdownSensor(CoordinatorEntity, BinarySensorEntity):
     def __init__(self, coordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        access = coordinator.access
         self._attr_unique_id = f"{coordinator.pdl}_token_expire"
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, coordinator.pdl)})
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        access = self.coordinator.access
+        self._attr_is_on = access.get("valid", False) is False
         self._attr_extra_state_attributes = {
             "Call number": access.get("call_number"),
             "Last call": access.get("last_call"),
@@ -48,12 +57,7 @@ class CountdownSensor(CoordinatorEntity, BinarySensorEntity):
             "Quota": access.get("quota_limit"),
             "Quota reached": access.get("quota_reached"),
             "Expiration date": access.get("consent_expiration_date"),
-            "Last access": coordinator.last_access,
-            "Last refresh": coordinator.last_refresh,
+            "Last access": self.oordinator.last_access,
+            "Last refresh": self.coordinator.last_refresh,
         }
-        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, coordinator.pdl)})
-
-    @property
-    def is_on(self):
-        """Value power."""
-        return self.coordinator.access.get("valid", False) is False
+        self.async_write_ha_state()
