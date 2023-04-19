@@ -64,16 +64,25 @@ class PowerSensor(CoordinatorEntity[EnedisDataUpdateCoordinator], SensorEntity):
             model=coordinator.contract.get("subscribed_power"),
             suggested_area="Garage",
         )
+        self._attr_native_value = round(float(coordinator.data.get(self.name)), 2)
+        self._attr_extra_state_attributes = {
+            "offpeak hours": coordinator.contract.get("offpeak_hours"),
+            "last activation date": coordinator.contract.get("last_activation_date"),
+            "last tariff changedate": coordinator.contract.get(
+                "last_distribution_tariff_change_date"
+            ),
+        }
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        contract = self.coordinator.contract
         self._attr_native_value = round(float(self.coordinator.data.get(self.name)), 2)
         self._attr_extra_state_attributes = {
-            "offpeak hours": contract.get("offpeak_hours"),
-            "last activation date": contract.get("last_activation_date"),
-            "last tariff changedate": contract.get(
+            "offpeak hours": self.coordinator.contract.get("offpeak_hours"),
+            "last activation date": self.coordinator.contract.get(
+                "last_activation_date"
+            ),
+            "last tariff changedate": self.coordinator.contract.get(
                 "last_distribution_tariff_change_date"
             ),
         }
@@ -94,6 +103,7 @@ class TempoSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.pdl}_tempo_day"
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, coordinator.pdl)})
+        self._attr_native_value = coordinator.tempo_day
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -114,6 +124,10 @@ class EcoWattSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.pdl}_ecowatt"
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, coordinator.pdl)})
+        self._attr_native_value = DAY_VALUES[coordinator.ecowatt_day.get("value", 0)]
+        self._attr_extra_state_attributes = {
+            "message": coordinator.ecowatt_day.get("message")
+        }
 
     @callback
     def _handle_coordinator_update(self) -> None:
