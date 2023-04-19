@@ -41,20 +41,10 @@ Add your equipment via the Integration menu
 
 ### Within the Options menu:
 
-The ranges must be set from midnight to midnight. (00H00 - 00H00)
-A range that has the same billing must have the same name so that HA can perform the sum.
-On each beach, it is necessary to add an hourly rate
+Days ranges must be set from midnight to midnight - 1. (00:00:00 - 23:59:59)
 
 Example :
 My contract stipulates off-peak hours from 01H30 to 08H00 and from 12H30 to 14H30.
-
-The following ranges should be defined:
-
-    Peak hours 00H00 01H30 0.12
-    Off-peak hours 01H00 08H00 0.08
-    Peak hours 08H00 12:30 0.12
-    Off-peak hours 12H30 14H00 0.08
-    Peak hours 14H00 00H00 0.12
 
 
 ![image](https://user-images.githubusercontent.com/1258123/233062369-ab7e4c4d-026e-4239-87c2-8053d3f005cc.png)
