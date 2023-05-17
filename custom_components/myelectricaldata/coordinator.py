@@ -111,11 +111,9 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             await self.api.async_update()
             _LOGGER.debug("Refresh datas: %s", self.api.last_refresh)
         except LimitReached as error:
-            _LOGGER.error(error.args[1]["detail"])
+            _LOGGER.error("Limit reached: %s", error)
         except EnedisException as error:
-            raise UpdateFailed(
-                f"{error.args[1]['detail']} ({error.args[0]})"
-            ) from error
+            raise UpdateFailed(f"Error to update data: {error}") from error
 
         # Add statistics in HA Database
         await async_add_statistics(self.hass, attributes, self.api.stats)
