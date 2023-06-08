@@ -30,7 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_get_db_infos(hass: HomeAssistant, statistic_id: str) -> tuple[str, dt]:
     """Fetch last information in database."""
     last_stats = await get_instance(hass).async_add_executor_job(
-        get_last_statistics, hass, 1, statistic_id, True, "sum"
+        get_last_statistics, hass, 1, statistic_id, True, {"sum"}
     )
     last_summary, dt_last_stat = (
         (0, None)
