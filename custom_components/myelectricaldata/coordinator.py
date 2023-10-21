@@ -1,8 +1,9 @@
 """Data Update Coordinator."""
 from __future__ import annotations
 
-from datetime import datetime as dt, timedelta
 import logging
+from datetime import datetime as dt
+from datetime import timedelta
 from typing import Any
 
 from myelectricaldatapy import EnedisByPDL, EnedisException, LimitReached
@@ -12,13 +13,6 @@ from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from .helpers import (
-    async_get_db_infos,
-    async_get_last_infos,
-    map_attributes,
-    next_date,
-    async_add_statistics,
-)
 
 from .const import (
     CONF_AUTH,
@@ -32,7 +26,16 @@ from .const import (
     CONF_RULE_START_TIME,
     CONF_SERVICE,
     CONF_TEMPO,
+    CONSUMPTION_DETAIL,
     DOMAIN,
+    PRODUCTION_DETAIL,
+)
+from .helpers import (
+    async_add_statistics,
+    async_get_db_infos,
+    async_get_last_infos,
+    map_attributes,
+    next_date,
 )
 
 SCAN_INTERVAL = timedelta(hours=3)
@@ -96,9 +99,15 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             dt_start, cum_values, cum_prices = await async_get_last_infos(
                 self.hass, attrs
             )
+
+            end = None
+            if service in [CONSUMPTION_DETAIL , PRODUCTION_DETAIL]:
+                end = next_date(dt_start, service) + timedelta(days=6)
+
             self.api.set_collects(
                 service=service,
                 start=next_date(dt_start, service),
+                end=end,
                 intervals=intervals,
                 prices=opt.get(CONF_PRICINGS),
                 cum_value=cum_values,
