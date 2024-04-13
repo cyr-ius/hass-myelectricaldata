@@ -6,13 +6,12 @@ from datetime import datetime as dt
 from datetime import timedelta
 from typing import Any
 
-from myelectricaldatapy import EnedisByPDL, EnedisException, LimitReached
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from myelectricaldatapy import EnedisByPDL, EnedisException, LimitReached
 
 from .const import (
     CONF_AUTH,
@@ -101,7 +100,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             )
 
             end = None
-            if service in [CONSUMPTION_DETAIL , PRODUCTION_DETAIL]:
+            if service in [CONSUMPTION_DETAIL, PRODUCTION_DETAIL]:
                 end = next_date(dt_start, service) + timedelta(days=6)
 
             self.api.set_collects(
