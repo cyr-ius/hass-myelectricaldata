@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import logging
 
-from myelectricaldatapy import EnedisByPDL
+import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-
 from homeassistant.components.recorder import get_instance
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-import homeassistant.helpers.config_validation as cv
+from myelectricaldatapy import EnedisByPDL
 
 from .const import (
     CLEAR_SERVICE,
@@ -33,7 +32,7 @@ from .const import (
     DOMAIN,
     FETCH_SERVICE,
 )
-from .helpers import async_add_statistics, map_attributes, async_normalize_datas
+from .helpers import async_add_statistics, async_normalize_datas, map_attributes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,9 +57,7 @@ async def async_services(hass: HomeAssistant):
     """Register services."""
 
     @callback
-    async def async_reload_history(  # pylint: disable=too-many-function-args
-        call: ServiceCall,
-    ) -> None:
+    async def async_reload_history(call: ServiceCall) -> None:
         """Load datas in statics table."""
         entry = hass.data[DOMAIN].get(call.data[CONF_ENTRY])
         service = call.data[CONF_SERVICE]

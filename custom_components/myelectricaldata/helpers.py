@@ -1,8 +1,9 @@
 """Helpers functions for MyElectricalData."""
 from __future__ import annotations
 
-from datetime import datetime as dt, timedelta
 import logging
+from datetime import datetime as dt
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.components.recorder import get_instance
@@ -14,7 +15,8 @@ from homeassistant.components.recorder.statistics import (
 )
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
-from homeassistant.util import dt as dt_util, slugify
+from homeassistant.util import dt as dt_util
+from homeassistant.util import slugify
 
 from .const import (
     CONSUMPTION_DAILY,
@@ -156,8 +158,7 @@ def map_attributes(mode: str, pdl: str, intervals: list[Any]) -> dict[str, Any]:
     name = f"{pdl} {mode} {suffix}".capitalize()
     _attributes.update(
         {
-            f"{DOMAIN}:"
-            + slugify(name.lower()): {
+            f"{DOMAIN}:" + slugify(name.lower()): {
                 "name": name,
                 "friendly_name": f"{mode} {suffix}",
                 "note": "standard",
@@ -169,8 +170,7 @@ def map_attributes(mode: str, pdl: str, intervals: list[Any]) -> dict[str, Any]:
         name = f"{pdl} {mode} offpeak".capitalize()
         _attributes.update(
             {
-                f"{DOMAIN}:"
-                + slugify(name.lower()): {
+                f"{DOMAIN}:" + slugify(name.lower()): {
                     "name": name,
                     "friendly_name": f"{mode} offpeak",
                     "note": "offpeak",
