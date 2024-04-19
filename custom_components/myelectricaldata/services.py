@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
@@ -32,7 +33,7 @@ from .const import (
     DOMAIN,
     FETCH_SERVICE,
 )
-from .helpers import async_add_statistics, async_normalize_datas, map_attributes
+from .helpers import async_add_statistics, map_attributes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -95,6 +96,23 @@ async def async_services(hass: HomeAssistant):
             timeout=30,
         )
         # Set collector
+        if service == CONSUMPTION_DETAIL and (end_date - start_date).days > 7:
+            while (end_date - start_date).days > 7:
+                stop_date = start_date + timedelta(days=7)
+                api.set_collects(
+                    service,
+                    start=start_date,
+                    end=stop_date,
+                    intervals=intervals,
+                    prices=prices,
+                )
+                # Update datas
+                await api.async_update_collects()
+                # Add statistics in HA Database
+                if api.has_collected:
+                    await async_add_statistics(hass, attributes, api.stats)
+                start_date = stop_date
+
         api.set_collects(
             service,
             start=start_date,
@@ -105,8 +123,9 @@ async def async_services(hass: HomeAssistant):
         # Update datas
         await api.async_update_collects()
         # Add statistics in HA Database
-        await async_add_statistics(hass, attributes, api.stats)
-        await async_normalize_datas(hass, attributes)
+        if api.has_collected:
+            await async_add_statistics(hass, attributes, api.stats)
+        # await async_normalize_datas(hass, attributes)
 
     @callback
     async def async_clear(call: ServiceCall) -> None:
