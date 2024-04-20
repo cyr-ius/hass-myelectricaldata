@@ -33,7 +33,7 @@ from .const import (
     DOMAIN,
     FETCH_SERVICE,
 )
-from .helpers import async_add_statistics, map_attributes
+from .helpers import async_add_statistics, async_get_last_infos, map_attributes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -95,9 +95,13 @@ async def async_services(hass: HomeAssistant):
             session=async_create_clientsession(hass),
             timeout=30,
         )
+        # Get last information from data
+        attrs = map_attributes(mode, entry.pdl, intervals)
+
         # Set collector
         if service == CONSUMPTION_DETAIL and (end_date - start_date).days > 7:
             while (end_date - start_date).days > 7:
+                _, sum_values, sum_prices = await async_get_last_infos(hass, attrs)
                 stop_date = start_date + timedelta(days=7)
                 api.set_collects(
                     service,
@@ -105,6 +109,8 @@ async def async_services(hass: HomeAssistant):
                     end=stop_date,
                     intervals=intervals,
                     prices=prices,
+                    cum_value=sum_values,
+                    cum_price=sum_prices,
                 )
                 # Update datas
                 await api.async_update_collects()
@@ -113,12 +119,15 @@ async def async_services(hass: HomeAssistant):
                     await async_add_statistics(hass, attributes, api.stats)
                 start_date = stop_date
 
+        _, sum_values, sum_prices = await async_get_last_infos(hass, attrs)
         api.set_collects(
             service,
             start=start_date,
             end=end_date,
             intervals=intervals,
             prices=prices,
+            cum_value=sum_values,
+            cum_price=sum_prices,
         )
         # Update datas
         await api.async_update_collects()
