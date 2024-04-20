@@ -1,5 +1,5 @@
 # Enedis service.
-fetch_datas:
+fetch_data:
   name: Fetch datas
   description: Fetch and add data in statistics database
   fields:
@@ -61,7 +61,7 @@ fetch_datas:
           mode: box          
 
 # Enedis service.
-clear_datas:
+clear_data:
   name: Clear datas
   description: clear data statistics in your database
   fields:

@@ -1,5 +1,5 @@
 """Constants for the Enedis integration."""
-CLEAR_SERVICE = "clear_datas"
+CLEAR_SERVICE = "clear_data"
 CONF_AUTH = "authentication"
 CONF_CONSUMPTION = "consumption"
 CONF_ECOWATT = "ecowatt"
@@ -33,7 +33,7 @@ DEFAULT_HC_PRICE = 0.1470
 DEFAULT_HP_PRICE = 0.1841
 DEFAULT_PC_PRICE = 0.06
 DOMAIN = "myelectricaldata"
-FETCH_SERVICE = "fetch_datas"
+FETCH_SERVICE = "fetch_data"
 MANUFACTURER = "Enedis"
 PLATFORMS = ["sensor", "binary_sensor"]
 PRODUCTION_DAILY = "daily_production"
