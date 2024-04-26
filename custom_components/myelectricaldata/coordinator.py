@@ -101,7 +101,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
             end = None
             if service in [CONSUMPTION_DETAIL, PRODUCTION_DETAIL]:
-                end = next_date(dt_start, service) + timedelta(days=6)
+                end = next_date(dt_start, service) + timedelta(days=7)
 
             self.api.set_collects(
                 service=service,
