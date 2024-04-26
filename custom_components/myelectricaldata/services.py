@@ -1,8 +1,8 @@
 """Helper module."""
+
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
@@ -98,28 +98,10 @@ async def async_services(hass: HomeAssistant):
         # Get last information from data
         attrs = map_attributes(mode, entry.pdl, intervals)
 
-        # Set collector
-        if service == CONSUMPTION_DETAIL and (end_date - start_date).days > 7:
-            while (end_date - start_date).days > 7:
-                _, sum_values, sum_prices = await async_get_last_infos(hass, attrs)
-                stop_date = start_date + timedelta(days=7)
-                api.set_collects(
-                    service,
-                    start=start_date,
-                    end=stop_date,
-                    intervals=intervals,
-                    prices=prices,
-                    cum_value=sum_values,
-                    cum_price=sum_prices,
-                )
-                # Update datas
-                await api.async_update_collects()
-                # Add statistics in HA Database
-                if api.has_collected:
-                    await async_add_statistics(hass, attributes, api.stats)
-                start_date = stop_date
-
+        # Get last sum and price
         _, sum_values, sum_prices = await async_get_last_infos(hass, attrs)
+
+        # Set api collector
         api.set_collects(
             service,
             start=start_date,
@@ -129,6 +111,7 @@ async def async_services(hass: HomeAssistant):
             cum_value=sum_values,
             cum_price=sum_prices,
         )
+
         # Update datas
         await api.async_update_collects()
         # Add statistics in HA Database
