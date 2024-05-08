@@ -80,7 +80,7 @@ async def async_get_last_infos(
 async def async_add_statistics(
     hass: HomeAssistant,
     attributes: dict[str, Any],
-    datas_collected: dict[str, Any],
+    data_collected: dict[str, Any],
 ) -> None:
     """Add statistics database."""
     for statistic_id, detail in attributes.items():
@@ -89,24 +89,24 @@ async def async_add_statistics(
         mode = detail["mode"]
         stats = []
         costs = []
-        for datas in datas_collected.get(mode, []):
-            if datas["notes"] != note:
+        for data in data_collected.get(mode, []):
+            if data["notes"] != note:
                 continue
-            _LOGGER.debug(datas)
-            if datas.get("value"):
+            _LOGGER.debug(data)
+            if data.get("value"):
                 stats.append(
                     StatisticData(
-                        start=datas["date"],
-                        state=datas["value"],
-                        sum=datas["sum_value"],
+                        start=data["date"],
+                        state=data["value"],
+                        sum=data["sum_value"],
                     )
                 )
-            if datas.get("price"):
+            if data.get("price"):
                 costs.append(
                     StatisticData(
-                        start=datas["date"],
-                        state=datas["price"],
-                        sum=datas["sum_price"],
+                        start=data["date"],
+                        state=data["price"],
+                        sum=data["sum_price"],
                     )
                 )
 
@@ -183,7 +183,7 @@ def map_attributes(mode: str, pdl: str, intervals: list[Any]) -> dict[str, Any]:
 
 
 async def async_normalize_datas(hass, attributes) -> None:
-    """Fix statistics datas."""
+    """Fix statistics data."""
     for statistic_id, attrs in attributes.items():
         rslt = await get_instance(hass).async_add_executor_job(
             statistics_during_period,

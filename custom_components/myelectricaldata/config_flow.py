@@ -1,4 +1,5 @@
 """Config flow to configure integration."""
+
 from __future__ import annotations
 
 from datetime import datetime as dt
@@ -143,7 +144,7 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
         _auth: dict[str, Any] = config_entry.options.get(CONF_AUTH, {})
         _production: dict[str, Any] = config_entry.options.get(CONF_PRODUCTION, {})
         _consumption: dict[str, Any] = config_entry.options.get(CONF_CONSUMPTION, {})
-        self._datas = {
+        self._data = {
             CONF_AUTH: _auth.copy(),
             CONF_PRODUCTION: _production.copy(),
             CONF_CONSUMPTION: _consumption.copy(),
@@ -161,26 +162,26 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
         )
 
     async def async_step_authentication(self, user_input: dict[str, Any] | None = None):
-        """Authentification step."""
+        """Authenticate step."""
         step_id = CONF_AUTH
         schema = vol.Schema(
             {
                 vol.Required(
                     CONF_TOKEN,
-                    default=self._datas[step_id].get(CONF_TOKEN),
+                    default=self._data[step_id].get(CONF_TOKEN),
                 ): str,
                 vol.Required(
                     CONF_ECOWATT,
-                    default=self._datas[step_id].get(CONF_ECOWATT, False),
+                    default=self._data[step_id].get(CONF_ECOWATT, False),
                 ): bool,
                 vol.Required(
                     CONF_TEMPO,
-                    default=self._datas[step_id].get(CONF_TEMPO, False),
+                    default=self._data[step_id].get(CONF_TEMPO, False),
                 ): bool,
             }
         )
         if user_input is not None:
-            self._datas[step_id].update(**user_input)
+            self._data[step_id].update(**user_input)
             return await self.async_step_init()
         return self.async_show_form(
             step_id=step_id, data_schema=schema, last_step=False
@@ -189,13 +190,13 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
     async def async_step_production(self, user_input: dict[str, Any] | None = None):
         """Production step."""
         step_id = CONF_PRODUCTION
-        standard = self._datas[step_id].get(CONF_PRICINGS, {}).get(CONF_STD, {})
+        standard = self._data[step_id].get(CONF_PRICINGS, {}).get(CONF_STD, {})
         schema = vol.Schema(
             {
                 vol.Optional(
                     CONF_SERVICE,
                     description={
-                        "suggested_value": self._datas[step_id].get(CONF_SERVICE)
+                        "suggested_value": self._data[step_id].get(CONF_SERVICE)
                     },
                 ): SelectSelector(
                     SelectSelectorConfig(
@@ -211,7 +212,7 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
             }
         )
         if user_input is not None:
-            self._datas[step_id].update(
+            self._data[step_id].update(
                 {
                     CONF_SERVICE: user_input.get(CONF_SERVICE),
                     CONF_PRICINGS: {
@@ -227,12 +228,12 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
     async def async_step_consumption(self, user_input: dict[str, Any] | None = None):
         """Consumption step."""
         step_id = CONF_CONSUMPTION
-        standard = self._datas[step_id].get(CONF_PRICINGS, {}).get(CONF_STD, {})
-        offpeak = self._datas[step_id].get(CONF_PRICINGS, {}).get(CONF_OFFPEAK, {})
+        standard = self._data[step_id].get(CONF_PRICINGS, {}).get(CONF_STD, {})
+        offpeak = self._data[step_id].get(CONF_PRICINGS, {}).get(CONF_OFFPEAK, {})
         schema = {
             vol.Optional(
                 CONF_SERVICE,
-                description={"suggested_value": self._datas[step_id].get(CONF_SERVICE)},
+                description={"suggested_value": self._data[step_id].get(CONF_SERVICE)},
             ): SelectSelector(
                 SelectSelectorConfig(
                     options=CONSUMPTION_CHOICE,
@@ -276,7 +277,7 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
             ): cv.positive_float,
         }
 
-        if self._datas[CONF_AUTH].get(CONF_TEMPO):
+        if self._data[CONF_AUTH].get(CONF_TEMPO):
             schema.update(tempo_schema)
         else:
             schema.update(standard_schema)
@@ -294,9 +295,9 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
             }
         )
         if user_input is not None:
-            self._datas[step_id].update({CONF_SERVICE: user_input.get(CONF_SERVICE)})
-            if self._datas[CONF_AUTH].get(CONF_TEMPO):
-                self._datas[step_id].update(
+            self._data[step_id].update({CONF_SERVICE: user_input.get(CONF_SERVICE)})
+            if self._data[CONF_AUTH].get(CONF_TEMPO):
+                self._data[step_id].update(
                     {
                         CONF_PRICINGS: {
                             CONF_STD: {
@@ -313,7 +314,7 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
                     }
                 )
             else:
-                self._datas[step_id].update(
+                self._data[step_id].update(
                     {
                         CONF_PRICINGS: {
                             CONF_STD: {CONF_PRICE: user_input[CONF_PRICE]},
@@ -333,9 +334,9 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
         user_input: dict[str, Any] | None = None,  # pylint: disable=unused-argument
     ) -> FlowResult():
         """Save the updated options."""
-        self._datas = default_settings(self._datas)
-        self._datas.update({"last_update": dt.now()})
-        return self.async_create_entry(title="", data=self._datas)
+        self._data = default_settings(self._data)
+        self._data.update({"last_update": dt.now()})
+        return self.async_create_entry(title="", data=self._data)
 
     async def async_step_rules(
         self,
@@ -352,7 +353,7 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
             rule_id = user_input.get(CONF_RULE_ID, self._conf_rule_id)
             step_id = user_input["step_id"]
             if rule_id:
-                rules = self._datas[step_id].get(CONF_INTERVALS, {})
+                rules = self._data[step_id].get(CONF_INTERVALS, {})
                 if user_input.get(CONF_RULE_DELETE, False):
                     rules.pop(str(rule_id))
                 else:
@@ -367,7 +368,7 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
                         }
                     )
 
-                self._datas[step_id][CONF_INTERVALS] = rules
+                self._data[step_id][CONF_INTERVALS] = rules
 
         if step_id == CONF_CONSUMPTION:
             return await self.async_step_consumption()
@@ -376,7 +377,7 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
     @callback
     def _async_rules_form(self, rule_id: str, step_id: str) -> FlowResult:
         """Return configuration form for rules."""
-        intervals = self._datas.get(step_id, {}).get(CONF_INTERVALS, {})
+        intervals = self._data.get(step_id, {}).get(CONF_INTERVALS, {})
         schema = {
             vol.Required("step_id"): step_id,
             vol.Required(CONF_RULE_START_TIME): TimeSelector(TimeSelectorConfig()),
@@ -401,7 +402,7 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
 
     def get_intervals(self, step_id: str) -> dict[str, Any]:
         """Return intervals."""
-        intervals = self._datas[step_id].get(CONF_INTERVALS, {})
+        intervals = self._data[step_id].get(CONF_INTERVALS, {})
         list_intervals = [
             SelectOptionDict(
                 value=rule_id,
@@ -416,24 +417,24 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
         return list_intervals
 
 
-def default_settings(datas: dict[str, Any]):
-    """Set default datas if missing."""
-    auth = datas.get(CONF_AUTH)
-    production = datas.get(CONF_PRODUCTION)
+def default_settings(data: dict[str, Any]):
+    """Set default data if missing."""
+    auth = data.get(CONF_AUTH)
+    production = data.get(CONF_PRODUCTION)
     if (
         production
         and production.get(CONF_SERVICE)
         and production.get(CONF_PRICINGS) is None
     ):
-        datas[CONF_PRODUCTION].update(DEFAULT_PRODUCTION)
+        data[CONF_PRODUCTION].update(DEFAULT_PRODUCTION)
 
-    consumption = datas.get(CONF_CONSUMPTION)
+    consumption = data.get(CONF_CONSUMPTION)
     if (
         consumption
         and consumption.get(CONF_SERVICE)
         and consumption.get(CONF_PRICINGS) is None
     ):
-        datas[CONF_CONSUMPTION].update(DEFAULT_CONSUMPTION)
+        data[CONF_CONSUMPTION].update(DEFAULT_CONSUMPTION)
 
     if (
         consumption
@@ -441,7 +442,7 @@ def default_settings(datas: dict[str, Any]):
         and CONF_BLUE not in consumption.get(CONF_PRICINGS, {}).get(CONF_STD, {})
         and CONF_BLUE not in consumption.get(CONF_PRICINGS, {}).get(CONF_OFFPEAK, {})
     ):
-        datas[CONF_CONSUMPTION] = {
+        data[CONF_CONSUMPTION] = {
             CONF_SERVICE: CONSUMPTION_DETAIL,
             **DEFAULT_CONSUMPTION_TEMPO,
         }
@@ -452,6 +453,6 @@ def default_settings(datas: dict[str, Any]):
         and CONF_BLUE in consumption.get(CONF_PRICINGS, {}).get(CONF_STD, {})
         and CONF_BLUE in consumption.get(CONF_PRICINGS, {}).get(CONF_OFFPEAK, {})
     ):
-        datas[CONF_CONSUMPTION].update(DEFAULT_CONSUMPTION)
+        data[CONF_CONSUMPTION].update(DEFAULT_CONSUMPTION)
 
-    return datas
+    return data

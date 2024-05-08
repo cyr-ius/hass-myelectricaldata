@@ -1,17 +1,18 @@
 """Data Update Coordinator."""
+
 from __future__ import annotations
 
+from datetime import datetime as dt, timedelta
 import logging
-from datetime import datetime as dt
-from datetime import timedelta
 from typing import Any
+
+from myelectricaldatapy import EnedisByPDL, EnedisException, LimitReached
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from myelectricaldatapy import EnedisByPDL, EnedisException, LimitReached
 
 from .const import (
     CONF_AUTH,
@@ -43,7 +44,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
-    """Define an object to fetch datas."""
+    """Define an object to fetch data."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Class to manage fetching data API."""
@@ -114,10 +115,10 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             )
             attributes.update(attrs)
 
-        # Refresh Api datas
+        # Refresh Api data
         try:
             await self.api.async_update()
-            _LOGGER.debug("Refresh datas: %s", self.api.last_refresh)
+            _LOGGER.debug("Refresh data: %s", self.api.last_refresh)
         except LimitReached as error:
             _LOGGER.error("Limit reached: %s", error)
         except EnedisException as error:

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import logging
 
-import homeassistant.helpers.config_validation as cv
+from myelectricaldatapy import EnedisByPDL
 import voluptuous as vol
+
 from homeassistant.components.recorder import get_instance
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from myelectricaldatapy import EnedisByPDL
+import homeassistant.helpers.config_validation as cv
 
 from .const import (
     CLEAR_SERVICE,
@@ -59,7 +60,7 @@ async def async_services(hass: HomeAssistant):
 
     @callback
     async def async_reload_history(call: ServiceCall) -> None:
-        """Load datas in statics table."""
+        """Load data in statistics table."""
         entry = hass.data[DOMAIN].get(call.data[CONF_ENTRY])
         service = call.data[CONF_SERVICE]
         options = entry.config_entry.options
@@ -112,12 +113,11 @@ async def async_services(hass: HomeAssistant):
             cum_price=sum_prices,
         )
 
-        # Update datas
+        # Update data
         await api.async_update_collects()
         # Add statistics in HA Database
         if api.has_collected:
             await async_add_statistics(hass, attributes, api.stats)
-        # await async_normalize_datas(hass, attributes)
 
     @callback
     async def async_clear(call: ServiceCall) -> None:
