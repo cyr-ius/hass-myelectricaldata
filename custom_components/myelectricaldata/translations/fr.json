@@ -1,126 +1,126 @@
 {
-    "config": {
-        "flow_title": "{name}",
-        "step": {
-            "user": {
-                "title": "Enregistre ton compte Enedis Gateway",
-                "description": "L'abonnement Tempo calculera automatique les réduction sur les périodes BLUE/WHITE/RED. (voir options)",
-                "data": {
-                    "pdl": "PDL",
-                    "token": "Jeton",
-                    "ecowatt": "Active le sensor Ecowatt",
-                    "tempo": "Abonnement Tempo",
-                    "production": "Activer la collecte de la production d'énergie",
-                    "consumption": "Activer la collecte de la consommation d'énergie"                  
-                }
-            }
-        },
-        "error": {
-            "cannot_connect": "Impossible de se connecter",
-            "unknown": "Erreur imprévue"
-        },
-        "abort": {
-            "already_configured": "Service déjà configuré"
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Enregistre ton compte Enedis Gateway",
+        "description": "L'abonnement Tempo calculera automatique les réduction sur les périodes BLUE/WHITE/RED. (voir options)",
+        "data": {
+          "pdl": "PDL",
+          "token": "Jeton",
+          "ecowatt": "Active le sensor Ecowatt",
+          "tempo": "Abonnement Tempo",
+          "production": "Activer la collecte de la production d'énergie",
+          "consumption": "Activer la collecte de la consommation d'énergie"
         }
+      }
     },
-    "options": {
-        "step": {
-            "init": {
-                "title": "Enedis options",
-                "menu_options": {
-                    "authentication": "Authentification",
-                    "production": "Production",
-                    "consumption": "Consommation",
-                    "save": "Sauvegarder & Sortir"
-                }      
-            },            
-            "authentication": {
-                "title": "Authentification",
-                "data": {
-                    "token": "Jeton",
-                    "ecowatt": "Activer le sensor Ecowatt",
-                    "tempo": "Abonnement Tempo"
-                }
-            },
-            "production": {
-                "title": "Production",
-                "description": "Sélectionner le service de collecte:\nDaily: valeur journalière\nDetail: valeur heure par heure",
-                "data": {
-                    "service": "Service",
-                    "price": "Tarif de revente"
-                }
-            },               
-            "consumption": {
-                "title": "Consommation",
-                "description": "Les plages horaires sont optionnelles. Pour leurs usages, merci de mettre le service en mode 'Detail'",
-                "data": {
-                    "service": "Service",
-                    "s_blue": "BLEU: Tarif heures pleines",
-                    "s_white": "BLANC: Tarif heures pleines",
-                    "s_red": "ROUGE: Tarif heures pleines",
-                    "o_blue": "BLEU: Tarif heures creuses",
-                    "o_white": "BLANC: Tarif heures creuses",
-                    "o_red": "ROUGE: Tarif heures creuses",
-                    "price": "Tarif heures pleines ou standard",
-                    "off_price": "Tarif heures creuses",
-                    "interval_new_id":"Ajouter plage d'heures creuses"
-                }
-            },
-            "rules": {
-                "title": "Ajouter une nouvelle plage horaire",
-                "description":"La plage horaire court de 00h00 à 23h59 par tranche de 30min\n Ex: 01:30:00 à 14:00:00",
-                "data": {
-                    "rule_id": "Id",
-                    "period_id": "Période",
-                    "step_id": "Service",
-                    "rule_start_time":"Heure de début",
-                    "rule_end_time":"Heure de fin",
-                    "rule_delete": "Effacer cette plage horaire"
-                }
-            }
-        },
-        "error": {
-            "syntax_error": "Erreur de syntax",
-            "time_error": "L'heure de début est plus grande que l'heure de fin",
-            "interval_time_error": "Les minutes ne sont pas des multiples de 30min"
-        }        
+    "error": {
+      "cannot_connect": "Impossible de se connecter",
+      "unknown": "Erreur imprévue"
     },
-    "selector": {
-        "consumption_choice": {
-           "options": {
-                "daily": "Journalier",
-                "detail": "Détaillé"
-            }
-        },
-        "production_choice": {
-            "options": {
-                "daily": "Journalier",
-                "detail": "Détaillé"
-            }
-        },
-        "interval_key": {
-            "options": {
-                "add_new_interval": "Ajouter une nouvelle plage"
-            }
-        }             
-    },
-    "entity": {
-        "sensor": {
-            "tempo": {
-                "state": {
-                    "blue": "Bleu",
-                    "white": "Blanc",
-                    "red": "Rouge"
-                }
-            },                  
-            "ecowatt": {
-                "state": {
-                    "na": "Non disponible",
-                    "green": "Vert",
-                    "orange": "Orange",
-                    "red": "Rouge"
-                }
-            }
+    "abort": {
+      "already_configured": "Service déjà configuré"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Enedis options",
+        "menu_options": {
+          "authentication": "Authentification",
+          "production": "Production",
+          "consumption": "Consommation",
+          "save": "Sauvegarder & Sortir"
         }
-    }            
+      },
+      "authentication": {
+        "title": "Authentification",
+        "data": {
+          "token": "Jeton",
+          "ecowatt": "Activer le sensor Ecowatt",
+          "tempo": "Abonnement Tempo"
+        }
+      },
+      "production": {
+        "title": "Production",
+        "description": "Sélectionner le service de collecte:\nDaily: valeur journalière\nDetail: valeur heure par heure",
+        "data": {
+          "service": "Service",
+          "price": "Tarif de revente"
+        }
+      },
+      "consumption": {
+        "title": "Consommation",
+        "description": "Les plages horaires sont optionnelles. Pour leurs usages, merci de mettre le service en mode 'Detail'",
+        "data": {
+          "service": "Service",
+          "s_blue": "BLEU: Tarif heures pleines",
+          "s_white": "BLANC: Tarif heures pleines",
+          "s_red": "ROUGE: Tarif heures pleines",
+          "o_blue": "BLEU: Tarif heures creuses",
+          "o_white": "BLANC: Tarif heures creuses",
+          "o_red": "ROUGE: Tarif heures creuses",
+          "price": "Tarif heures pleines ou standard",
+          "off_price": "Tarif heures creuses",
+          "interval_new_id": "Ajouter plage d'heures creuses"
+        }
+      },
+      "rules": {
+        "title": "Ajouter une nouvelle plage horaire",
+        "description": "La plage horaire court de 00h00 à 23h59 par tranche de 30min\n Ex: 01:30:00 à 14:00:00",
+        "data": {
+          "rule_id": "Id",
+          "period_id": "Période",
+          "step_id": "Service",
+          "rule_start_time": "Heure de début",
+          "rule_end_time": "Heure de fin",
+          "rule_delete": "Effacer cette plage horaire"
+        }
+      }
+    },
+    "error": {
+      "syntax_error": "Erreur de syntax",
+      "time_error": "L'heure de début est plus grande que l'heure de fin",
+      "interval_time_error": "Les minutes ne sont pas des multiples de 30min"
+    }
+  },
+  "selector": {
+    "consumption_choice": {
+      "options": {
+        "daily": "Journalier",
+        "detail": "Détaillé"
+      }
+    },
+    "production_choice": {
+      "options": {
+        "daily": "Journalier",
+        "detail": "Détaillé"
+      }
+    },
+    "interval_key": {
+      "options": {
+        "add_new_interval": "Ajouter une nouvelle plage"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "tempo": {
+        "state": {
+          "blue": "Bleu",
+          "white": "Blanc",
+          "red": "Rouge"
+        }
+      },
+      "ecowatt": {
+        "state": {
+          "na": "Non disponible",
+          "green": "Vert",
+          "orange": "Orange",
+          "red": "Rouge"
+        }
+      }
+    }
+  }
 }

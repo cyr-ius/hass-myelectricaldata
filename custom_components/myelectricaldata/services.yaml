@@ -1,6 +1,6 @@
 # Enedis service.
 fetch_data:
-  name: Fetch datas
+  name: Fetch data
   description: Fetch and add data in statistics database
   fields:
     entry:
@@ -12,7 +12,7 @@ fetch_data:
           integration: myelectricaldata
     service:
       name: Service
-      description: Type of data to retrieve 
+      description: Type of data to retrieve
       required: true
       default: daily_production
       selector:
@@ -22,7 +22,7 @@ fetch_data:
             - label: Daily Consumption
               value: daily_consumption
             - label: Detail Consumption
-              value: consumption_load_curve              
+              value: consumption_load_curve
             - label: Daily Production
               value: daily_production
             - label: Detail Production
@@ -46,9 +46,9 @@ fetch_data:
       selector:
         number:
           min: 0
-          max: 100     
-          step: 0.001    
-          mode: box  
+          max: 100
+          step: 0.001
+          mode: box
     off_price:
       name: Offpeak Price
       description: Offpeak Price (Only if detailed mode)
@@ -56,13 +56,13 @@ fetch_data:
       selector:
         number:
           min: 0
-          max: 100     
+          max: 100
           step: 0.001
-          mode: box          
+          mode: box
 
 # Enedis service.
 clear_data:
-  name: Clear datas
+  name: Clear data
   description: clear data statistics in your database
   fields:
     statistic_id:
