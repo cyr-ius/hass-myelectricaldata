@@ -1,4 +1,5 @@
 """Sensor for power energy."""
+
 from __future__ import annotations
 
 import logging
@@ -8,15 +9,15 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .coordinator import EnedisDataUpdateCoordinator
 
+from . import MyElectricalDataConfigEntry
 from .const import DOMAIN, MANUFACTURER, URL
+from .coordinator import EnedisDataUpdateCoordinator
 
 DAY_VALUES = {0: "na", 1: "green", 2: "orange", 3: "red"}
 TEMPO_OPTIONS = ["blue", "white", "red"]
@@ -26,11 +27,11 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    entry: MyElectricalDataConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the sensors."""
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator = entry.runtime_data
     entities = []
     for name in coordinator.data.keys():
         entities.append(PowerSensor(coordinator, name))

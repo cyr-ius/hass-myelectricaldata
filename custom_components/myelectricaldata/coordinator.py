@@ -39,6 +39,7 @@ from .helpers import (
 )
 
 SCAN_INTERVAL = timedelta(hours=3)
+RETRY = 3
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,9 +57,11 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.hass = hass
         self.last_access: dt | None = None
         self.last_refresh: dt | None = None
+        self.last_stat: dt | None = None
         self.pdl: str = entry.data[CONF_PDL]
         self.tempo_day: str | None = None
         self.tempo: dict[str, Any] = {}
+        self.retry: int = RETRY
         token: str = entry.options[CONF_AUTH][CONF_TOKEN]
 
         self.api = EnedisByPDL(
@@ -115,9 +118,15 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             )
             attributes.update(attrs)
 
+        force_refresh = (
+            (self.retry != 0)
+            and self.last_stat is not None
+            and (self.last_stat.date() != dt.now().date())
+        )
+
         # Refresh Api data
         try:
-            await self.api.async_update()
+            await self.api.async_update(force_refresh=force_refresh)
             _LOGGER.debug("Refresh data: %s", self.api.last_refresh)
         except LimitReached as error:
             _LOGGER.error("Limit reached: %s", error)
@@ -125,7 +134,11 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error to update data: {error}") from error
 
         # Add statistics in HA Database
-        await async_add_statistics(self.hass, attributes, self.api.stats)
+        await self.entry.async_create_task(
+            self.hass,
+            async_add_statistics(self.hass, attributes, self.api.stats),
+            "statistics",
+        )
 
         self.access = self.api.access
         self.contract = self.api.contract
@@ -133,10 +146,11 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.ecowatt_day = self.api.ecowatt_day
         self.last_access = self.api.last_access
         self.last_refresh = self.api.last_refresh
+        self.retry -= 1
 
         statistics = {}
         for statistic_id, detail in attributes.items():
-            summary, _ = await async_get_db_infos(self.hass, statistic_id)
+            summary, self.last_stat = await async_get_db_infos(self.hass, statistic_id)
             statistics.update({detail["friendly_name"].capitalize(): summary})
-        _LOGGER.debug("[statistics] %s", statistics)
+        _LOGGER.debug("[statistics] %s, last collect: %s", statistics, self.last_stat)
         return statistics
