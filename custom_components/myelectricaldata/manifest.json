@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/cyr-ius/hass-myelectricaldata/issues",
   "loggers": ["myelectricaldatapy"],
   "requirements": ["myelectricaldatapy==2.2.3"],
-  "version": "2.2.4"
+  "version": "2.2.5"
 }
