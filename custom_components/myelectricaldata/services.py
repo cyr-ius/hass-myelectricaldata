@@ -66,7 +66,7 @@ async def async_services(hass: HomeAssistant):
         if entry is None:
             raise ServiceValidationError("Config entry not found")
         service = call.data[CONF_SERVICE]
-        options = entry.config_entry.options
+        options = entry.options
         start_date = call.data[CONF_START_DATE]
         end_date = call.data[CONF_END_DATE]
         mode = (
