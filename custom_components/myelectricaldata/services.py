@@ -22,6 +22,7 @@ from .const import (
     CONF_ENTRY,
     CONF_INTERVALS,
     CONF_OFF_PRICE,
+    CONF_PDL,
     CONF_PRICE,
     CONF_PRICINGS,
     CONF_PRODUCTION,
@@ -67,6 +68,7 @@ async def async_services(hass: HomeAssistant):
             raise ServiceValidationError("Config entry not found")
         service = call.data[CONF_SERVICE]
         options = entry.options
+        pdl = entry.data[CONF_PDL]
         start_date = call.data[CONF_START_DATE]
         end_date = call.data[CONF_END_DATE]
         mode = (
@@ -91,16 +93,16 @@ async def async_services(hass: HomeAssistant):
             prices = options[mode].get(CONF_PRICINGS)
 
         # Get attributes
-        attributes = map_attributes(mode, entry.pdl, intervals)
+        attributes = map_attributes(mode, pdl, intervals)
 
         api = EnedisByPDL(
-            pdl=entry.pdl,
+            pdl=pdl,
             token=options[CONF_AUTH][CONF_TOKEN],
             session=async_create_clientsession(hass),
             timeout=30,
         )
         # Get last information from data
-        attrs = map_attributes(mode, entry.pdl, intervals)
+        attrs = map_attributes(mode, pdl, intervals)
 
         # Get last sum and price
         _, sum_values, sum_prices = await async_get_last_infos(hass, attrs)
