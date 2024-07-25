@@ -61,7 +61,9 @@ async def async_services(hass: HomeAssistant):
     @callback
     async def async_reload_history(call: ServiceCall) -> None:
         """Load data in statistics table."""
-        entry = hass.data[DOMAIN].get(call.data[CONF_ENTRY])
+        entry = hass.config_entries.async_get_entry(call.data[CONF_ENTRY])
+        if entry is None:
+            raise ServiceValidationError("Config entry not found")
         service = call.data[CONF_SERVICE]
         options = entry.config_entry.options
         start_date = call.data[CONF_START_DATE]
