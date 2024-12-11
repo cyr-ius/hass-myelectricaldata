@@ -92,9 +92,9 @@ class MyElectricalFlowHandler(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):
+    def async_get_options_flow(config_entry: ConfigEntry):
         """Get option flow."""
-        return MyElectricalDataOptionsFlowHandler(config_entry)
+        return MyElectricalDataOptionsFlowHandler()
 
     async def async_step_user(self, user_input=None):
         """Handle a flow initialized by the user."""
@@ -138,12 +138,13 @@ class MyElectricalFlowHandler(ConfigFlow, domain=DOMAIN):
 class MyElectricalDataOptionsFlowHandler(OptionsFlow):
     """Handle option."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
+    def __init__(self) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
-        _auth: dict[str, Any] = config_entry.options.get(CONF_AUTH, {})
-        _production: dict[str, Any] = config_entry.options.get(CONF_PRODUCTION, {})
-        _consumption: dict[str, Any] = config_entry.options.get(CONF_CONSUMPTION, {})
+        _auth: dict[str, Any] = self.config_entry.options.get(CONF_AUTH, {})
+        _production: dict[str, Any] = self.config_entry.options.get(CONF_PRODUCTION, {})
+        _consumption: dict[str, Any] = self.config_entry.options.get(
+            CONF_CONSUMPTION, {}
+        )
         self._data = {
             CONF_AUTH: _auth.copy(),
             CONF_PRODUCTION: _production.copy(),
@@ -152,8 +153,7 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
         self._conf_rule_id: int | None = None
 
     async def async_step_init(
-        self,
-        user_input: dict[str, Any] | None = None,  # pylint: disable=unused-argument
+        self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle options flow."""
         return self.async_show_menu(
@@ -330,9 +330,8 @@ class MyElectricalDataOptionsFlowHandler(OptionsFlow):
         )
 
     async def async_step_save(
-        self,
-        user_input: dict[str, Any] | None = None,  # pylint: disable=unused-argument
-    ) -> FlowResult():
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """Save the updated options."""
         self._data = default_settings(self._data)
         self._data.update({"last_update": dt.now()})
