@@ -9,7 +9,8 @@ from typing import Any
 from myelectricaldatapy import Enedis, EnedisException
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+from homeassistant import config_entries
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
@@ -85,7 +86,7 @@ DATA_SCHEMA = vol.Schema(
 _LOGGER = logging.getLogger(__name__)
 
 
-class MyElectricalFlowHandler(ConfigFlow, domain=DOMAIN):
+class MyElectricalFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow."""
 
     VERSION = 1
@@ -94,7 +95,7 @@ class MyElectricalFlowHandler(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry: ConfigEntry):
         """Get option flow."""
-        return MyElectricalDataOptionsFlowHandler()
+        return MyElectricalDataOptionsFlowHandler(config_entry)
 
     async def async_step_user(self, user_input=None):
         """Handle a flow initialized by the user."""
@@ -135,16 +136,14 @@ class MyElectricalFlowHandler(ConfigFlow, domain=DOMAIN):
         )
 
 
-class MyElectricalDataOptionsFlowHandler(OptionsFlow):
+class MyElectricalDataOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle option."""
 
-    def __init__(self) -> None:
+    def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
-        _auth: dict[str, Any] = self.config_entry.options.get(CONF_AUTH, {})
-        _production: dict[str, Any] = self.config_entry.options.get(CONF_PRODUCTION, {})
-        _consumption: dict[str, Any] = self.config_entry.options.get(
-            CONF_CONSUMPTION, {}
-        )
+        _auth: dict[str, Any] = config_entry.options.get(CONF_AUTH, {})
+        _production: dict[str, Any] = config_entry.options.get(CONF_PRODUCTION, {})
+        _consumption: dict[str, Any] = config_entry.options.get(CONF_CONSUMPTION, {})
         self._data = {
             CONF_AUTH: _auth.copy(),
             CONF_PRODUCTION: _production.copy(),
