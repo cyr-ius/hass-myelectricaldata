@@ -49,12 +49,11 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Class to manage fetching data API."""
+        self.entry = entry
         self.access: dict[str, Any] = {}
         self.contract: dict[str, Any] = {}
         self.ecowatt_day: str | None = None
         self.ecowatt: dict[str, Any] = {}
-        self.entry = entry
-        self.hass = hass
         self.last_access: dt | None = None
         self.last_refresh: dt | None = None
         self.last_stat: dt | None = None
@@ -62,15 +61,20 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.tempo_day: str | None = None
         self.tempo: dict[str, Any] = {}
         self.retry: int = RETRY
-        token: str = entry.options[CONF_AUTH][CONF_TOKEN]
 
-        self.api = EnedisByPDL(
-            pdl=self.pdl,
-            token=token,
-            session=async_create_clientsession(hass),
-            timeout=30,
-        )
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
+
+    async def _async_setup(self) -> None:
+        """Set up the coordinator."""
+        try:
+            self.api = EnedisByPDL(
+                pdl=self.pdl,
+                token=self.entry.options[CONF_AUTH][CONF_TOKEN],
+                session=async_create_clientsession(self.hass),
+                timeout=30,
+            )
+        except EnedisException as error:
+            raise UpdateFailed(f"Error to setup coordinator: {error}") from error
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via API."""
