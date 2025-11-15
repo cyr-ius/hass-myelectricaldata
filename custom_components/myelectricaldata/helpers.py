@@ -138,7 +138,7 @@ async def async_add_statistics(
                 statistic_id=f"{statistic_id}_cost",
                 unit_of_measurement="EUR",
                 mean_type=StatisticMeanType.NONE,
-                unit_class=EnergyConverter.UNIT_CLASS,
+                unit_class=None,
             )
             hass.async_add_executor_job(
                 async_add_external_statistics, hass, metacost, costs
