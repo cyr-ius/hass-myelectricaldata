@@ -117,7 +117,6 @@ async def async_add_statistics(
         if stats:
             _LOGGER.debug("[addstats] Add %s stat in table", mode)
             metadata = StatisticMetaData(
-                has_mean=False,
                 has_sum=True,
                 name=name,
                 source=DOMAIN,
@@ -131,7 +130,6 @@ async def async_add_statistics(
         if costs:
             _LOGGER.debug("[addstats] Add %s cost in table", mode)
             metacost = StatisticMetaData(
-                has_mean=False,
                 has_sum=True,
                 name=f"{name} cost",
                 source=DOMAIN,
@@ -203,7 +201,6 @@ async def async_normalize_datas(hass, attributes) -> None:
         )
 
         metadata = StatisticMetaData(
-            has_mean=False,
             has_sum=True,
             name=attrs["friendly_name"],
             source=DOMAIN,
