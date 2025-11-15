@@ -7,7 +7,11 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.components.recorder import get_instance
-from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
+from homeassistant.components.recorder.models import (
+    StatisticData,
+    StatisticMeanType,
+    StatisticMetaData,
+)
 from homeassistant.components.recorder.statistics import (
     async_add_external_statistics,
     get_last_statistics,
@@ -119,6 +123,7 @@ async def async_add_statistics(
                 source=DOMAIN,
                 statistic_id=statistic_id,
                 unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+                mean_type=StatisticMeanType.NONE,
             )
             hass.async_add_executor_job(
                 async_add_external_statistics, hass, metadata, stats
@@ -132,6 +137,7 @@ async def async_add_statistics(
                 source=DOMAIN,
                 statistic_id=f"{statistic_id}_cost",
                 unit_of_measurement="EUR",
+                mean_type=StatisticMeanType.NONE,
             )
             hass.async_add_executor_job(
                 async_add_external_statistics, hass, metacost, costs
@@ -203,6 +209,7 @@ async def async_normalize_datas(hass, attributes) -> None:
             source=DOMAIN,
             statistic_id=statistic_id,
             unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+            mean_type=StatisticMeanType.NONE,
         )
 
         for values in rslt.values():
