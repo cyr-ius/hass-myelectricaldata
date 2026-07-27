@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import logging
 
-from myelectricaldatapy import EnedisByPDL
+import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-
 from homeassistant.components.recorder import get_instance
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-import homeassistant.helpers.config_validation as cv
+from myelectricaldatapy import EnedisByPDL
 
 from .const import (
     CLEAR_SERVICE,
