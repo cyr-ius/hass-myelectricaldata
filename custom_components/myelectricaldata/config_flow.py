@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime as dt
 import logging
+from datetime import datetime as dt
 from typing import Any
 
-from myelectricaldatapy import Enedis, EnedisException
+import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.selector import (
     SelectOptionDict,
     SelectSelector,
@@ -24,6 +22,7 @@ from homeassistant.helpers.selector import (
     TimeSelector,
     TimeSelectorConfig,
 )
+from myelectricaldatapy import Enedis, EnedisException
 
 from .const import (
     CONF_AUTH,
