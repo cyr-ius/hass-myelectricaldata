@@ -38,6 +38,7 @@ from .const import (
 from .helpers import (
     async_get_last_infos,
     async_import_sensor_statistics,
+    async_rebuild_statistics,
     build_price_items,
     build_sensor_items,
     read_prices,
@@ -129,9 +130,13 @@ async def async_services(hass: HomeAssistant):
 
         # Update data
         await api.async_update_collects()
-        # Import statistics onto their own sensor entity
+        # Import statistics onto their own sensor entity, then rebuild the
+        # cumulative sum from scratch so a chunk imported out of order (e.g.
+        # backfilling several date ranges over several days to stay under
+        # the daily API quota) reconnects cleanly with what's already there.
         if api.has_collected:
             await async_import_sensor_statistics(hass, items, api.stats)
+            await async_rebuild_statistics(hass, items)
 
     @callback
     async def async_clear(call: ServiceCall) -> None:

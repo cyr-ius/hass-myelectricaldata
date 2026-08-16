@@ -326,6 +326,70 @@ async def async_migrate_legacy_statistics(
         )
 
 
+async def async_rebuild_statistics(
+    hass: HomeAssistant, items: list[dict[str, Any]]
+) -> None:
+    """Recompute a clean, monotonic cumulative sum across an entity's full history.
+
+    A manual backfill (see services.FETCH_SERVICE) is typically done in
+    several chunks spread over several days to stay under Enedis' daily
+    quota, and can land before, after, or in the middle of data that's
+    already there. Each chunk's "sum" column is computed locally by
+    EnedisAnalytics from whatever baseline was known at import time, so
+    stitching chunks together out of order leaves discontinuities at the
+    seams (a value the last chunk imported doesn't know about the running
+    total of a chunk imported afterward that precedes it).
+
+    This re-reads every raw state value for the statistic (chronologically,
+    across its whole history) and rewrites the sum as a plain running total
+    from zero, so the result is correct regardless of how many calls it took
+    to get there or in what order. No Enedis API call involved.
+    """
+    instance = get_instance(hass)
+    for item in items:
+        statistic_id = item["entity_id"]
+        result = await instance.async_add_executor_job(
+            statistics_during_period,
+            hass,
+            dt_util.as_local(dt.fromtimestamp(0)),  # noqa: DTZ006
+            None,
+            {statistic_id},
+            "hour",
+            None,
+            {"state"},
+        )
+        values = result.get(statistic_id)
+        if not values:
+            continue
+
+        running_sum = 0.0
+        rows = []
+        for value in sorted(values, key=lambda v: v["start"]):
+            running_sum += value.get("state") or 0
+            rows.append(
+                StatisticData(
+                    start=dt_util.utc_from_timestamp(value["start"]),
+                    state=value.get("state") or 0,
+                    sum=running_sum,
+                )
+            )
+
+        is_energy = item["kind"] == "energy"
+        metadata = StatisticMetaData(
+            has_sum=True,
+            name=None,
+            source="recorder",
+            statistic_id=statistic_id,
+            unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR if is_energy else "EUR",
+            mean_type=StatisticMeanType.NONE,
+            unit_class=EnergyConverter.UNIT_CLASS if is_energy else None,
+        )
+        await instance.async_add_executor_job(
+            async_import_statistics, hass, metadata, rows
+        )
+        _LOGGER.info("Rebuilt %s statistic points for %s", len(rows), statistic_id)
+
+
 def next_date(date_: dt | None, service: str) -> dt:
     """Return next date."""
     if date_ and service in [PRODUCTION_DETAIL, CONSUMPTION_DETAIL]:
