@@ -38,7 +38,7 @@ from .helpers import (
     next_date,
 )
 
-SCAN_INTERVAL = timedelta(hours=3)
+SCAN_INTERVAL = timedelta(hours=6)
 RETRY = 3
 
 _LOGGER = logging.getLogger(__name__)
