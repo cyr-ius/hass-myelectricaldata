@@ -16,9 +16,11 @@ from homeassistant.components.recorder.models import (
 from homeassistant.components.recorder.statistics import (
     async_import_statistics,
     get_last_statistics,
+    statistics_during_period,
 )
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 from homeassistant.util.unit_conversion import EnergyConverter
 
@@ -118,6 +120,8 @@ def build_sensor_items(
                 "note": note,
                 "mode": mode,
                 "kind": "energy",
+                "pdl": pdl,
+                "suffix": suffix,
             }
         )
         if has_price:
@@ -131,6 +135,8 @@ def build_sensor_items(
                     "note": note,
                     "mode": mode,
                     "kind": "cost",
+                    "pdl": pdl,
+                    "suffix": suffix,
                 }
             )
     _LOGGER.debug("[items] %s", items)
@@ -247,6 +253,76 @@ async def async_import_sensor_statistics(
         )
         await get_instance(hass).async_add_executor_job(
             async_import_statistics, hass, metadata, rows
+        )
+
+
+def _legacy_statistic_id(item: dict[str, Any]) -> str:
+    """Reproduce the pre-2.4 external statistic_id naming (myelectricaldata:...).
+
+    Kept only so async_migrate_legacy_statistics can locate and copy the
+    history collected before statistics moved onto real sensor entities.
+    """
+    name = f"{item['pdl']} {item['mode']} {item['suffix']}".capitalize()
+    legacy_id = f"{DOMAIN}:" + slugify(name.lower())
+    if item["kind"] == "cost":
+        legacy_id = f"{legacy_id}_cost"
+    return legacy_id
+
+
+async def async_migrate_legacy_statistics(
+    hass: HomeAssistant, items: list[dict[str, Any]]
+) -> None:
+    """One-time copy of the old external statistics onto their new entity.
+
+    Runs once per coordinator lifetime (see EnedisDataUpdateCoordinator).
+    Purely a local database copy, no Enedis API call involved, so upgrading
+    doesn't strand years of already-collected history behind a 7-day cold
+    start just because the statistic_id moved onto a real sensor entity.
+    """
+    instance = get_instance(hass)
+    for item in items:
+        new_id = item["entity_id"]
+        if (await async_get_db_infos(hass, new_id))[1] is not None:
+            continue  # already has data, nothing to migrate
+
+        legacy_id = _legacy_statistic_id(item)
+        result = await instance.async_add_executor_job(
+            statistics_during_period,
+            hass,
+            dt_util.as_local(dt.fromtimestamp(0)),  # noqa: DTZ006
+            None,
+            {legacy_id},
+            "hour",
+            None,
+            {"state", "sum"},
+        )
+        values = result.get(legacy_id)
+        if not values:
+            continue
+
+        rows = [
+            StatisticData(
+                start=dt_util.utc_from_timestamp(value["start"]),
+                state=value["state"],
+                sum=value["sum"],
+            )
+            for value in values
+        ]
+        is_energy = item["kind"] == "energy"
+        metadata = StatisticMetaData(
+            has_sum=True,
+            name=None,
+            source="recorder",
+            statistic_id=new_id,
+            unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR if is_energy else "EUR",
+            mean_type=StatisticMeanType.NONE,
+            unit_class=EnergyConverter.UNIT_CLASS if is_energy else None,
+        )
+        await instance.async_add_executor_job(
+            async_import_statistics, hass, metadata, rows
+        )
+        _LOGGER.info(
+            "Migrated %s historical points from %s to %s", len(rows), legacy_id, new_id
         )
 
 

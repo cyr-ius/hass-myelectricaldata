@@ -33,6 +33,7 @@ from .helpers import (
     async_get_db_infos,
     async_get_last_infos,
     async_import_sensor_statistics,
+    async_migrate_legacy_statistics,
     build_price_items,
     build_sensor_items,
     next_date,
@@ -60,6 +61,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.last_stat: dt | None = None
         self.pdl: str = entry.data[CONF_PDL]
         self.price_items: list[dict[str, Any]] = []
+        self._migrated_legacy_stats = False
         self.tempo_day: str | None = None
         self.tempo: dict[str, Any] = {}
         self.retry: int = RETRY
@@ -119,6 +121,8 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             mode_items = build_sensor_items(
                 mode, self.pdl, service, intervals, has_price=bool(prices)
             )
+            if not self._migrated_legacy_stats:
+                await async_migrate_legacy_statistics(self.hass, mode_items)
             dt_start, cum_values, cum_prices = await async_get_last_infos(
                 self.hass, mode_items
             )
@@ -140,6 +144,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             price_items.extend(mode_price_items)
 
         self.price_items = price_items
+        self._migrated_legacy_stats = True
 
         force_refresh = (
             (self.retry != 0)
