@@ -35,7 +35,7 @@ DEFAULT_PC_PRICE = 0.06
 DOMAIN = "myelectricaldata"
 FETCH_SERVICE = "fetch_data"
 MANUFACTURER = "Enedis"
-PLATFORMS = ["sensor", "binary_sensor"]
+PLATFORMS = ["sensor", "binary_sensor", "number"]
 PRODUCTION_DAILY = "daily_production"
 PRODUCTION_DETAIL = "production_load_curve"
 SAVE = "save"
@@ -63,20 +63,4 @@ DEFAULT_CONSUMPTION_TEMPO = {
             CONF_RULE_END_TIME: "00:00:00",
         },
     },
-}
-DEFAULT_PRODUCTION = {
-    CONF_PRICINGS: {
-        CONF_STD: {
-            CONF_PRICE: DEFAULT_PC_PRICE,
-        },
-    },
-    CONF_INTERVALS: {},
-}
-DEFAULT_CONSUMPTION = {
-    CONF_PRICINGS: {
-        CONF_STD: {
-            CONF_PRICE: DEFAULT_CC_PRICE,
-        },
-    },
-    CONF_INTERVALS: {},
 }

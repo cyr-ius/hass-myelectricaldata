@@ -6,7 +6,6 @@ import logging
 from datetime import datetime as dt
 from typing import Any
 
-import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
@@ -26,35 +25,21 @@ from myelectricaldatapy import Enedis, EnedisException
 
 from .const import (
     CONF_AUTH,
-    CONF_BLUE,
     CONF_CONSUMPTION,
     CONF_ECOWATT,
     CONF_INTERVALS,
-    CONF_OFF_PRICE,
-    CONF_OFFPEAK,
     CONF_PDL,
-    CONF_PRICE,
-    CONF_PRICINGS,
     CONF_PRODUCTION,
-    CONF_RED,
     CONF_RULE_DELETE,
     CONF_RULE_END_TIME,
     CONF_RULE_ID,
     CONF_RULE_NEW_ID,
     CONF_RULE_START_TIME,
     CONF_SERVICE,
-    CONF_STD,
     CONF_TEMPO,
-    CONF_WHITE,
     CONSUMPTION_DAILY,
     CONSUMPTION_DETAIL,
-    DEFAULT_CC_PRICE,
-    DEFAULT_CONSUMPTION,
     DEFAULT_CONSUMPTION_TEMPO,
-    DEFAULT_HC_PRICE,
-    DEFAULT_HP_PRICE,
-    DEFAULT_PC_PRICE,
-    DEFAULT_PRODUCTION,
     DOMAIN,
     PRODUCTION_DAILY,
     PRODUCTION_DETAIL,
@@ -188,7 +173,6 @@ class MyElectricalDataOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_production(self, user_input: dict[str, Any] | None = None):
         """Production step."""
         step_id = CONF_PRODUCTION
-        standard = self._data[step_id].get(CONF_PRICINGS, {}).get(CONF_STD, {})
         schema = vol.Schema(
             {
                 vol.Optional(
@@ -204,20 +188,10 @@ class MyElectricalDataOptionsFlowHandler(config_entries.OptionsFlow):
                         translation_key="production_choice",
                     )
                 ),
-                vol.Optional(
-                    CONF_PRICE, default=standard.get(CONF_PRICE, DEFAULT_PC_PRICE)
-                ): cv.positive_float,
             }
         )
         if user_input is not None:
-            self._data[step_id].update(
-                {
-                    CONF_SERVICE: user_input.get(CONF_SERVICE),
-                    CONF_PRICINGS: {
-                        CONF_STD: {CONF_PRICE: user_input.get(CONF_PRICE)},
-                    },
-                }
-            )
+            self._data[step_id].update({CONF_SERVICE: user_input.get(CONF_SERVICE)})
             return await self.async_step_init()
         return self.async_show_form(
             step_id=step_id, data_schema=schema, last_step=False
@@ -226,63 +200,21 @@ class MyElectricalDataOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_consumption(self, user_input: dict[str, Any] | None = None):
         """Consumption step."""
         step_id = CONF_CONSUMPTION
-        standard = self._data[step_id].get(CONF_PRICINGS, {}).get(CONF_STD, {})
-        offpeak = self._data[step_id].get(CONF_PRICINGS, {}).get(CONF_OFFPEAK, {})
-        schema = {
-            vol.Optional(
-                CONF_SERVICE,
-                description={"suggested_value": self._data[step_id].get(CONF_SERVICE)},
-            ): SelectSelector(
-                SelectSelectorConfig(
-                    options=CONSUMPTION_CHOICE,
-                    mode=SelectSelectorMode.DROPDOWN,
-                    custom_value=True,
-                    translation_key="consumption_choice",
-                )
-            ),
-        }
-        standard_schema = {
-            vol.Optional(
-                CONF_PRICE, default=standard.get(CONF_PRICE, DEFAULT_CC_PRICE)
-            ): cv.positive_float,
-            vol.Optional(
-                CONF_OFF_PRICE, default=offpeak.get(CONF_PRICE, DEFAULT_HC_PRICE)
-            ): cv.positive_float,
-        }
-        tempo_schema = {
-            vol.Optional(
-                "s_blue",
-                default=standard.get(CONF_BLUE, round(DEFAULT_HP_PRICE * 0.7, 2)),
-            ): cv.positive_float,
-            vol.Optional(
-                "s_white",
-                default=standard.get(CONF_WHITE, round(DEFAULT_HP_PRICE * 0.9, 2)),
-            ): cv.positive_float,
-            vol.Optional(
-                "s_red", default=standard.get(CONF_RED, round(DEFAULT_HP_PRICE * 3, 2))
-            ): cv.positive_float,
-            vol.Optional(
-                "o_blue",
-                default=offpeak.get(CONF_BLUE, round(DEFAULT_HC_PRICE * 0.6, 2)),
-            ): cv.positive_float,
-            vol.Optional(
-                "o_white",
-                default=offpeak.get(CONF_WHITE, round(DEFAULT_HC_PRICE * 0.76, 2)),
-            ): cv.positive_float,
-            vol.Optional(
-                "o_red",
-                default=offpeak.get(CONF_RED, round(DEFAULT_HC_PRICE * 0.85, 2)),
-            ): cv.positive_float,
-        }
-
-        if self._data[CONF_AUTH].get(CONF_TEMPO):
-            schema.update(tempo_schema)
-        else:
-            schema.update(standard_schema)
-
         data_schema = vol.Schema(
             {
-                **schema,
+                vol.Optional(
+                    CONF_SERVICE,
+                    description={
+                        "suggested_value": self._data[step_id].get(CONF_SERVICE)
+                    },
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=CONSUMPTION_CHOICE,
+                        mode=SelectSelectorMode.DROPDOWN,
+                        custom_value=True,
+                        translation_key="consumption_choice",
+                    )
+                ),
                 vol.Optional(CONF_INTERVALS): SelectSelector(
                     SelectSelectorConfig(
                         options=self.get_intervals(step_id),
@@ -294,32 +226,6 @@ class MyElectricalDataOptionsFlowHandler(config_entries.OptionsFlow):
         )
         if user_input is not None:
             self._data[step_id].update({CONF_SERVICE: user_input.get(CONF_SERVICE)})
-            if self._data[CONF_AUTH].get(CONF_TEMPO):
-                self._data[step_id].update(
-                    {
-                        CONF_PRICINGS: {
-                            CONF_STD: {
-                                CONF_BLUE: user_input["s_blue"],
-                                CONF_WHITE: user_input["s_white"],
-                                CONF_RED: user_input["s_red"],
-                            },
-                            CONF_OFFPEAK: {
-                                CONF_BLUE: user_input["o_blue"],
-                                CONF_WHITE: user_input["o_white"],
-                                CONF_RED: user_input["o_red"],
-                            },
-                        }
-                    }
-                )
-            else:
-                self._data[step_id].update(
-                    {
-                        CONF_PRICINGS: {
-                            CONF_STD: {CONF_PRICE: user_input[CONF_PRICE]},
-                            CONF_OFFPEAK: {CONF_PRICE: user_input[CONF_OFF_PRICE]},
-                        }
-                    }
-                )
             if sel_interval := user_input.get(CONF_INTERVALS):
                 return await self.async_step_rules(None, sel_interval, step_id)
             return await self.async_step_init()
@@ -332,7 +238,7 @@ class MyElectricalDataOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Save the updated options."""
         self._data = default_settings(self._data)
-        self._data.update({"last_update": dt.now()})
+        self._data.update({"last_update": dt.now()})  # noqa: DTZ005
         return self.async_create_entry(title="", data=self._data)
 
     async def async_step_rules(
@@ -415,41 +321,24 @@ class MyElectricalDataOptionsFlowHandler(config_entries.OptionsFlow):
 
 
 def default_settings(data: dict[str, Any]):
-    """Set default data if missing."""
-    auth = data.get(CONF_AUTH)
-    production = data.get(CONF_PRODUCTION)
-    if (
-        production
-        and production.get(CONF_SERVICE)
-        and production.get(CONF_PRICINGS) is None
-    ):
-        data[CONF_PRODUCTION].update(DEFAULT_PRODUCTION)
+    """Set default data if missing.
 
+    Tariffs themselves are no longer stored here: they live in the editable
+    Number entities (see number.py), which are the source of truth read by
+    the coordinator. This only takes care of forcing the detail service with
+    its default offpeak windows once Tempo gets enabled, since Tempo always
+    needs the load curve split into standard/offpeak.
+    """
+    auth = data.get(CONF_AUTH, {})
     consumption = data.get(CONF_CONSUMPTION)
     if (
         consumption
-        and consumption.get(CONF_SERVICE)
-        and consumption.get(CONF_PRICINGS) is None
-    ):
-        data[CONF_CONSUMPTION].update(DEFAULT_CONSUMPTION)
-
-    if (
-        consumption
         and auth.get(CONF_TEMPO)
-        and CONF_BLUE not in consumption.get(CONF_PRICINGS, {}).get(CONF_STD, {})
-        and CONF_BLUE not in consumption.get(CONF_PRICINGS, {}).get(CONF_OFFPEAK, {})
+        and consumption.get(CONF_SERVICE) != CONSUMPTION_DETAIL
     ):
         data[CONF_CONSUMPTION] = {
             CONF_SERVICE: CONSUMPTION_DETAIL,
-            **DEFAULT_CONSUMPTION_TEMPO,
+            CONF_INTERVALS: DEFAULT_CONSUMPTION_TEMPO[CONF_INTERVALS],
         }
-
-    if (
-        consumption
-        and not auth.get(CONF_TEMPO)
-        and CONF_BLUE in consumption.get(CONF_PRICINGS, {}).get(CONF_STD, {})
-        and CONF_BLUE in consumption.get(CONF_PRICINGS, {}).get(CONF_OFFPEAK, {})
-    ):
-        data[CONF_CONSUMPTION].update(DEFAULT_CONSUMPTION)
 
     return data
