@@ -20,7 +20,6 @@ from .const import (
     CONF_ECOWATT,
     CONF_INTERVALS,
     CONF_PDL,
-    CONF_PRICINGS,
     CONF_PRODUCTION,
     CONF_RULE_END_TIME,
     CONF_RULE_START_TIME,
@@ -31,11 +30,14 @@ from .const import (
     PRODUCTION_DETAIL,
 )
 from .helpers import (
-    async_add_statistics,
     async_get_db_infos,
     async_get_last_infos,
-    map_attributes,
+    async_import_sensor_statistics,
+    async_migrate_legacy_statistics,
+    build_price_items,
+    build_sensor_items,
     next_date,
+    read_prices,
 )
 
 SCAN_INTERVAL = timedelta(hours=6)
@@ -58,6 +60,8 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.last_refresh: dt | None = None
         self.last_stat: dt | None = None
         self.pdl: str = entry.data[CONF_PDL]
+        self.price_items: list[dict[str, Any]] = []
+        self._migrated_legacy_stats = False
         self.tempo_day: str | None = None
         self.tempo: dict[str, Any] = {}
         self.retry: int = RETRY
@@ -79,8 +83,9 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via API."""
         options = self.entry.options
+        tempo = bool(options.get(CONF_AUTH, {}).get(CONF_TEMPO))
         # Get tempo day
-        if options.get(CONF_AUTH, {}).get(CONF_TEMPO):
+        if tempo:
             self.api.tempo_subscription(True)
 
         # Get ecowatt information
@@ -89,22 +94,37 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         dict_opts = dict(
             filter(
-                lambda x: x[0] in [CONF_PRODUCTION, CONF_CONSUMPTION]
-                and x[1].get(CONF_SERVICE),
+                lambda x: (
+                    x[0] in [CONF_PRODUCTION, CONF_CONSUMPTION]
+                    and x[1].get(CONF_SERVICE)
+                ),
                 options.items(),
             )
         )
 
-        attributes = {}
+        items: list[dict[str, Any]] = []
+        price_items: list[dict[str, Any]] = []
         for mode, opt in dict_opts.items():
             service = opt.get(CONF_SERVICE)
             intervals = [
                 (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
                 for interval in opt.get(CONF_INTERVALS, {}).values()
             ]
-            attrs = map_attributes(mode, self.pdl, intervals)
+            mode_price_items = build_price_items(
+                mode,
+                self.pdl,
+                service,
+                intervals,
+                tempo=tempo and mode == CONF_CONSUMPTION,
+            )
+            prices = read_prices(self.hass, mode_price_items)
+            mode_items = build_sensor_items(
+                mode, self.pdl, service, intervals, has_price=bool(prices)
+            )
+            if not self._migrated_legacy_stats:
+                await async_migrate_legacy_statistics(self.hass, mode_items)
             dt_start, cum_values, cum_prices = await async_get_last_infos(
-                self.hass, attrs
+                self.hass, mode_items
             )
 
             end = None
@@ -116,16 +136,20 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 start=next_date(dt_start, service),
                 end=end,
                 intervals=intervals,
-                prices=opt.get(CONF_PRICINGS),
+                prices=prices,
                 cum_value=cum_values,
                 cum_price=cum_prices,
             )
-            attributes.update(attrs)
+            items.extend(mode_items)
+            price_items.extend(mode_price_items)
+
+        self.price_items = price_items
+        self._migrated_legacy_stats = True
 
         force_refresh = (
             (self.retry != 0)
             and self.last_stat is not None
-            and (self.last_stat.date() != dt.now().date())
+            and (self.last_stat.date() != dt.now().date())  # noqa: DTZ005
         )
 
         # Refresh Api data
@@ -135,12 +159,12 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         except LimitReached as error:
             _LOGGER.error("Limit reached: %s", error)
         except EnedisException as error:
-            raise UpdateFailed(f"Error to update data: {error}") from error
+            _LOGGER.error("Error to update data: %s", error)
 
-        # Add statistics in HA Database
+        # Import statistics directly onto their own sensor entity
         await self.entry.async_create_task(
             self.hass,
-            async_add_statistics(self.hass, attributes, self.api.stats),
+            async_import_sensor_statistics(self.hass, items, self.api.stats),
             "statistics",
         )
 
@@ -152,9 +176,13 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.last_refresh = self.api.last_refresh
         self.retry -= 1
 
-        statistics = {}
-        for statistic_id, detail in attributes.items():
-            summary, self.last_stat = await async_get_db_infos(self.hass, statistic_id)
-            statistics.update({detail["friendly_name"].capitalize(): summary})
-        _LOGGER.debug("[statistics] %s, last collect: %s", statistics, self.last_stat)
-        return statistics
+        sensors_data = {}
+        for item in items:
+            summary, self.last_stat = await async_get_db_infos(
+                self.hass, item["entity_id"]
+            )
+            sensors_data[item["entity_id"]] = {**item, "value": summary}
+        _LOGGER.debug(
+            "[sensors_data] %s, last collect: %s", sensors_data, self.last_stat
+        )
+        return sensors_data

@@ -32,9 +32,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up the sensors."""
     coordinator = entry.runtime_data
-    entities = []
-    for name in coordinator.data.keys():
-        entities.append(PowerSensor(coordinator, name))
+    entities = [
+        PowerSensor(coordinator, entity_id) for entity_id in coordinator.data
+    ]
     if coordinator.tempo_day:
         entities.append(TempoSensor(coordinator))
     if coordinator.ecowatt_day:
@@ -44,19 +44,25 @@ async def async_setup_entry(
 
 
 class PowerSensor(CoordinatorEntity[EnedisDataUpdateCoordinator], SensorEntity):
-    """Sensor return power."""
+    """Sensor backed by its own long-term statistics (energy or cost bucket)."""
 
-    _attr_device_class = SensorDeviceClass.ENERGY
-    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator, sensor_name) -> None:
+    def __init__(self, coordinator, entity_id: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        self.sensor_mode = sensor_name
-        self._attr_unique_id = f"{coordinator.pdl}_{sensor_name}"
-        self._attr_name = sensor_name
+        item = coordinator.data[entity_id]
+        self.entity_id = entity_id
+        self._attr_unique_id = item["unique_id"]
+        self._attr_name = item["friendly_name"].capitalize()
+        if item["kind"] == "cost":
+            self._attr_device_class = SensorDeviceClass.MONETARY
+            self._attr_native_unit_of_measurement = "EUR"
+            self._attr_state_class = SensorStateClass.TOTAL
+        else:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.pdl)},
             name=f"Linky ({coordinator.pdl})",
@@ -65,20 +71,12 @@ class PowerSensor(CoordinatorEntity[EnedisDataUpdateCoordinator], SensorEntity):
             model=coordinator.contract.get("subscribed_power"),
             suggested_area="Garage",
         )
-        self._attr_native_value = round(float(coordinator.data.get(self.name)), 2)
-        self._attr_extra_state_attributes = {
-            "offpeak hours": coordinator.contract.get("offpeak_hours"),
-            "last activation date": coordinator.contract.get("last_activation_date"),
-            "last tariff changedate": coordinator.contract.get(
-                "last_distribution_tariff_change_date"
-            ),
-        }
+        self._attr_native_value = round(float(item["value"]), 2)
+        self._attr_extra_state_attributes = self._build_attributes()
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        self._attr_native_value = round(float(self.coordinator.data.get(self.name)), 2)
-        self._attr_extra_state_attributes = {
+    def _build_attributes(self) -> dict:
+        """Return extra state attributes from the current contract."""
+        return {
             "offpeak hours": self.coordinator.contract.get("offpeak_hours"),
             "last activation date": self.coordinator.contract.get(
                 "last_activation_date"
@@ -87,6 +85,13 @@ class PowerSensor(CoordinatorEntity[EnedisDataUpdateCoordinator], SensorEntity):
                 "last_distribution_tariff_change_date"
             ),
         }
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if item := self.coordinator.data.get(self.entity_id):
+            self._attr_native_value = round(float(item["value"]), 2)
+        self._attr_extra_state_attributes = self._build_attributes()
         super()._handle_coordinator_update()
 
 

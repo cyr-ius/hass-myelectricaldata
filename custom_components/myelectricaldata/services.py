@@ -23,19 +23,26 @@ from .const import (
     CONF_OFF_PRICE,
     CONF_PDL,
     CONF_PRICE,
-    CONF_PRICINGS,
     CONF_PRODUCTION,
     CONF_RULE_END_TIME,
     CONF_RULE_START_TIME,
     CONF_SERVICE,
     CONF_START_DATE,
     CONF_STATISTIC_ID,
+    CONF_TEMPO,
     CONSUMPTION_DAILY,
     CONSUMPTION_DETAIL,
     DOMAIN,
     FETCH_SERVICE,
 )
-from .helpers import async_add_statistics, async_get_last_infos, map_attributes
+from .helpers import (
+    async_get_last_infos,
+    async_import_sensor_statistics,
+    async_rebuild_statistics,
+    build_price_items,
+    build_sensor_items,
+    read_prices,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -81,7 +88,8 @@ async def async_services(hass: HomeAssistant):
             for interval in intervals.values()
         ]
 
-        # Set price
+        # Set price: use the call's override if given, otherwise fall back to
+        # the live value of the tariff number entities (the source of truth).
         if price := call.data.get(CONF_PRICE):
             prices = {"standard": {CONF_PRICE: price}}
             if len(intervals) != 0 and (off_price := call.data.get(CONF_OFF_PRICE)):
@@ -89,10 +97,15 @@ async def async_services(hass: HomeAssistant):
             else:
                 intervals = []
         else:
-            prices = options[mode].get(CONF_PRICINGS)
+            tempo = mode == CONF_CONSUMPTION and bool(
+                options.get(CONF_AUTH, {}).get(CONF_TEMPO)
+            )
+            prices = read_prices(
+                hass, build_price_items(mode, pdl, service, intervals, tempo)
+            )
 
-        # Get attributes
-        attributes = map_attributes(mode, pdl, intervals)
+        # Get sensor items for this mode/service
+        items = build_sensor_items(mode, pdl, service, intervals, has_price=bool(prices))
 
         api = EnedisByPDL(
             pdl=pdl,
@@ -100,11 +113,9 @@ async def async_services(hass: HomeAssistant):
             session=async_create_clientsession(hass),
             timeout=30,
         )
-        # Get last information from data
-        attrs = map_attributes(mode, pdl, intervals)
 
         # Get last sum and price
-        _, sum_values, sum_prices = await async_get_last_infos(hass, attrs)
+        _, sum_values, sum_prices = await async_get_last_infos(hass, items)
 
         # Set api collector
         api.set_collects(
@@ -119,15 +130,19 @@ async def async_services(hass: HomeAssistant):
 
         # Update data
         await api.async_update_collects()
-        # Add statistics in HA Database
+        # Import statistics onto their own sensor entity, then rebuild the
+        # cumulative sum from scratch so a chunk imported out of order (e.g.
+        # backfilling several date ranges over several days to stay under
+        # the daily API quota) reconnects cleanly with what's already there.
         if api.has_collected:
-            await async_add_statistics(hass, attributes, api.stats)
+            await async_import_sensor_statistics(hass, items, api.stats)
+            await async_rebuild_statistics(hass, items)
 
     @callback
     async def async_clear(call: ServiceCall) -> None:
         """Clear data in database."""
         statistic_id = call.data[CONF_STATISTIC_ID]
-        if not statistic_id.startswith("myelectricaldata:"):
+        if not statistic_id.startswith(f"sensor.{DOMAIN}_"):
             _LOGGER.error("Statistic_id is incorrect %s", statistic_id)
             return
         get_instance(hass).async_clear_statistics([statistic_id])
