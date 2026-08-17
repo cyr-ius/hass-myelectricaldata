@@ -257,6 +257,43 @@ async def async_import_sensor_statistics(
         )
 
 
+async def async_reassert_statistics(
+    hass: HomeAssistant, known_sums: dict[str, tuple[dt | None, float, str]]
+) -> None:
+    """Overwrite the current hour's statistic with our own last known-good sum.
+
+    Each PowerSensor's statistic_id is its own entity_id (source="recorder"),
+    so HA's built-in sensor/recorder.py compiler also generates "sum"
+    statistics for it from its live state history, independently of and
+    racing with async_import_sensor_statistics. Called right after
+    EVENT_RECORDER_HOURLY_STATISTICS_GENERATED, this re-writes the current
+    hour with the value we actually imported, undoing whatever the native
+    compiler just wrote for it - unless we ourselves already wrote real data
+    for this exact hour this cycle, in which case there's nothing to correct
+    and doing so would clobber that real per-period state.
+    """
+    instance = get_instance(hass)
+    hour_start = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
+    for entity_id, (last_real_dt, last_real_sum, kind) in known_sums.items():
+        if last_real_dt is not None and dt_util.as_utc(last_real_dt) >= hour_start:
+            continue  # this hour was legitimately written by us this cycle
+
+        is_energy = kind == "energy"
+        metadata = StatisticMetaData(
+            has_sum=True,
+            name=None,
+            source="recorder",
+            statistic_id=entity_id,
+            unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR if is_energy else "EUR",
+            mean_type=StatisticMeanType.NONE,
+            unit_class=EnergyConverter.UNIT_CLASS if is_energy else None,
+        )
+        rows = [StatisticData(start=hour_start, state=0, sum=last_real_sum)]
+        await instance.async_add_executor_job(
+            async_import_statistics, hass, metadata, rows
+        )
+
+
 def _legacy_statistic_id(item: dict[str, Any]) -> str:
     """Reproduce the pre-2.4 external statistic_id naming (myelectricaldata:...).
 

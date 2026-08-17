@@ -9,7 +9,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_TOKEN
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -35,13 +35,14 @@ from .helpers import (
     async_get_last_infos,
     async_import_sensor_statistics,
     async_migrate_legacy_statistics,
+    async_reassert_statistics,
     build_price_items,
     build_sensor_items,
     next_date,
     read_prices,
 )
 
-SCAN_INTERVAL = timedelta(hours=6)
+SCAN_INTERVAL = timedelta(minutes=5)
 RETRY = 3
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.last_stat: dt | None = None
         self.pdl: str = entry.data[CONF_PDL]
         self.price_items: list[dict[str, Any]] = []
+        self._known_sums: dict[str, tuple[dt | None, float, str]] = {}
         self._migrated_legacy_stats = False
         self.tempo_day: str | None = None
         self.tempo: dict[str, Any] = {}
@@ -80,6 +82,20 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             )
         except EnedisException as error:
             raise UpdateFailed(f"Error to setup coordinator: {error}") from error
+
+    async def async_handle_hourly_statistics(self, _event: Event) -> None:
+        """Re-assert our tracked cumulative sums after HA's native compiler runs.
+
+        PowerSensor reports the same value async_import_sensor_statistics writes
+        as long-term statistics for that same statistic_id (=entity_id,
+        source="recorder"). HA's own sensor/recorder.py compiler also generates
+        "sum" statistics for any entity with a state_class, purely from its live
+        state history - independently of, and racing with, our explicit import.
+        Reasserting our last known-good sum right after each hourly compile
+        (EVENT_RECORDER_HOURLY_STATISTICS_GENERATED) overwrites whatever the
+        native compiler just wrote for the current hour with our own value.
+        """
+        await async_reassert_statistics(self.hass, self._known_sums)
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via API."""
@@ -181,6 +197,11 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         for item in items:
             summary, self.last_stat = await async_get_db_infos(
                 self.hass, item["entity_id"]
+            )
+            self._known_sums[item["entity_id"]] = (
+                self.last_stat,
+                float(summary),
+                item["kind"],
             )
             sensors_data[item["entity_id"]] = {**item, "value": summary}
         _LOGGER.debug(

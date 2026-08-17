@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EVENT_RECORDER_HOURLY_STATISTICS_GENERATED
 from homeassistant.core import HomeAssistant
 
 from .const import PLATFORMS
@@ -27,6 +28,12 @@ async def async_setup_entry(
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await async_services(hass)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    entry.async_on_unload(
+        hass.bus.async_listen(
+            EVENT_RECORDER_HOURLY_STATISTICS_GENERATED,
+            coordinator.async_handle_hourly_statistics,
+        )
+    )
 
     return True
 
