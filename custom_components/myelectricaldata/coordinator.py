@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
+from datetime import date, timedelta
 from datetime import datetime as dt
-from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -12,6 +12,7 @@ from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 from myelectricaldatapy import EnedisByPDL, EnedisException, LimitReached
 
 from .const import (
@@ -57,7 +58,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.ecowatt_day: str | None = None
         self.ecowatt: dict[str, Any] = {}
         self.last_access: dt | None = None
-        self.last_refresh: dt | None = None
+        self.last_refresh: date | None = None
         self.last_stat: dt | None = None
         self.pdl: str = entry.data[CONF_PDL]
         self.price_items: list[dict[str, Any]] = []
@@ -149,7 +150,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         force_refresh = (
             (self.retry != 0)
             and self.last_stat is not None
-            and (self.last_stat.date() != dt.now().date())  # noqa: DTZ005
+            and (self.last_stat.date() != dt_util.now().date())
         )
 
         # Refresh Api data

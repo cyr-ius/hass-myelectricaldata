@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from datetime import datetime as dt
 from datetime import timedelta
@@ -57,7 +58,9 @@ async def async_get_db_infos(hass: HomeAssistant, statistic_id: str) -> tuple[st
         if not last_stats
         else (
             last_stats[statistic_id][0]["sum"],
-            dt.fromtimestamp(last_stats[statistic_id][0]["start"]),  # noqa: DTZ006
+            dt_util.as_local(
+                dt_util.utc_from_timestamp(last_stats[statistic_id][0]["start"])
+            ),
         )
     )
     _LOGGER.debug(
@@ -68,18 +71,18 @@ async def async_get_db_infos(hass: HomeAssistant, statistic_id: str) -> tuple[st
 
 async def async_get_last_infos(
     hass: HomeAssistant, items: list[dict[str, Any]]
-) -> tuple[dt, float, float]:
+) -> tuple[dt, dict[str, float], dict[str, float]]:
     """Set default api."""
     sum_values: dict[str, float] = {}
     sum_prices: dict[str, float] = {}
-    _dt_last = None
+    _dt_last: dt | None = None
     for item in items:
         summary, dt_last = await async_get_db_infos(hass, item["entity_id"])
         if item["kind"] == "energy":
-            sum_values[item["note"]] = summary
+            sum_values[item["note"]] = float(summary)
             _dt_last = dt_last if _dt_last is None else _dt_last
         else:
-            sum_prices[item["note"]] = summary
+            sum_prices[item["note"]] = float(summary)
 
     _LOGGER.debug(
         "[infosdb] last date: %s, sum value: %s, sum price: %s",
@@ -204,10 +207,8 @@ def read_prices(hass: HomeAssistant, items: list[dict[str, Any]]) -> dict[str, A
         state = hass.states.get(item["entity_id"])
         value = item["default"]
         if state is not None and state.state not in (None, "unknown", "unavailable"):
-            try:
+            with contextlib.suppress(ValueError):
                 value = float(state.state)
-            except ValueError:
-                pass
         prices.setdefault(item["note"], {})[item["key"]] = value
     _LOGGER.debug("[prices] %s", prices)
     return prices
