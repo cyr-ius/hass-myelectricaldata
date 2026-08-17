@@ -16,6 +16,7 @@ from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from . import MyElectricalDataConfigEntry
 from .const import DOMAIN
@@ -107,7 +108,7 @@ class OffpeakSensor(CoordinatorEntity[EnedisDataUpdateCoordinator], BinarySensor
             return time(int(h), int(m))
 
         range_hours = [(parse_heure(d), parse_heure(f)) for d, f in ranges]
-        now = dt.now().time()
+        now = dt_util.now().time()
 
         for debut, fin in range_hours:
             if debut <= fin:
