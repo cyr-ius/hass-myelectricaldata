@@ -290,7 +290,7 @@ async def async_migrate_legacy_statistics(
         result = await instance.async_add_executor_job(
             statistics_during_period,
             hass,
-            dt_util.as_local(dt.fromtimestamp(0)),  # noqa: DTZ006
+            dt_util.utc_from_timestamp(0),
             None,
             {legacy_id},
             "hour",
@@ -352,7 +352,7 @@ async def async_rebuild_statistics(
         result = await instance.async_add_executor_job(
             statistics_during_period,
             hass,
-            dt_util.as_local(dt.fromtimestamp(0)),  # noqa: DTZ006
+            dt_util.utc_from_timestamp(0),
             None,
             {statistic_id},
             "hour",
@@ -406,7 +406,7 @@ def next_date(date_: dt | None, service: str) -> dt:
     elif date_:
         return date_ + timedelta(days=1)
     return (
-        dt.now() - timedelta(days=1095)  # noqa: DTZ005
+        dt_util.now().replace(tzinfo=None) - timedelta(days=1095)
         if service in [PRODUCTION_DAILY, CONSUMPTION_DAILY]
-        else dt.now() - timedelta(days=7)  # noqa: DTZ005
+        else dt_util.now().replace(tzinfo=None) - timedelta(days=7)
     )
