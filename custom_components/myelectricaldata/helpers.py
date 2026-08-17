@@ -281,6 +281,7 @@ async def async_migrate_legacy_statistics(
     start just because the statistic_id moved onto a real sensor entity.
     """
     instance = get_instance(hass)
+    migrated_items: list[dict[str, Any]] = []
     for item in items:
         new_id = item["entity_id"]
         if (await async_get_db_infos(hass, new_id))[1] is not None:
@@ -325,6 +326,16 @@ async def async_migrate_legacy_statistics(
         _LOGGER.info(
             "Migrated %s historical points from %s to %s", len(rows), legacy_id, new_id
         )
+        migrated_items.append(item)
+
+    if migrated_items:
+        # The legacy sum was copied verbatim and may already carry a
+        # discontinuity from a pre-refactor manual backfill that was never
+        # rebuilt (see async_rebuild_statistics). Recomputing it from the
+        # just-imported state values (same local, API-free operation)
+        # prevents that stale discontinuity from becoming a phantom spike
+        # in the Energy dashboard on the new entity.
+        await async_rebuild_statistics(hass, migrated_items)
 
 
 async def async_rebuild_statistics(
