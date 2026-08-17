@@ -392,7 +392,15 @@ async def async_rebuild_statistics(
 
 
 def next_date(date_: dt | None, service: str) -> dt:
-    """Return next date."""
+    """Return next date.
+
+    myelectricaldatapy expects a naive local datetime and applies its own
+    tz_localize; a tz-aware value (e.g. from dt_util.as_local) makes it
+    crash with "Cannot localize tz-aware Timestamp", so tzinfo is stripped
+    here before returning.
+    """
+    if date_ and date_.tzinfo is not None:
+        date_ = date_.replace(tzinfo=None)
     if date_ and service in [PRODUCTION_DETAIL, CONSUMPTION_DETAIL]:
         return date_ + timedelta(hours=1)
     elif date_:
