@@ -71,3 +71,15 @@ clear_data:
       required: true
       selector:
         text:
+
+# Enedis service.
+rebuild_data:
+  name: Rebuild data
+  description: Recompute a statistic's cumulative sum from its own local history (no Enedis API call)
+  fields:
+    statistic_id:
+      name: Statistic Id
+      description: set statistic_id , you pick in statistic from developer page
+      required: true
+      selector:
+        text:

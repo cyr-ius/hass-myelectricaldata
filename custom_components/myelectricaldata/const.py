@@ -38,6 +38,7 @@ MANUFACTURER = "Enedis"
 PLATFORMS = ["sensor", "binary_sensor", "number"]
 PRODUCTION_DAILY = "daily_production"
 PRODUCTION_DETAIL = "production_load_curve"
+REBUILD_SERVICE = "rebuild_data"
 SAVE = "save"
 URL = "https://myelectricaldata.fr"
 DEFAULT_CONSUMPTION_TEMPO = {

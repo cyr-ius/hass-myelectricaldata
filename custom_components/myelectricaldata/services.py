@@ -34,6 +34,7 @@ from .const import (
     CONSUMPTION_DETAIL,
     DOMAIN,
     FETCH_SERVICE,
+    REBUILD_SERVICE,
 )
 from .helpers import (
     async_get_last_infos,
@@ -147,9 +148,27 @@ async def async_services(hass: HomeAssistant):
             return
         get_instance(hass).async_clear_statistics([statistic_id])
 
+    @callback
+    async def async_rebuild(call: ServiceCall) -> None:
+        """Recompute a statistic's cumulative sum from its own local history.
+
+        Purely local (rereads what's already in the recorder database), no
+        Enedis API call involved - fixes a sum left discontinuous by a manual
+        adjustment or an out-of-order backfill without spending API quota.
+        """
+        statistic_id = call.data[CONF_STATISTIC_ID]
+        if not statistic_id.startswith(f"sensor.{DOMAIN}_"):
+            _LOGGER.error("Statistic_id is incorrect %s", statistic_id)
+            return
+        kind = "cost" if statistic_id.endswith("_cost") else "energy"
+        await async_rebuild_statistics(hass, [{"entity_id": statistic_id, "kind": kind}])
+
     hass.services.async_register(
         DOMAIN, FETCH_SERVICE, async_reload_history, schema=HISTORY_SERVICE_SCHEMA
     )
     hass.services.async_register(
         DOMAIN, CLEAR_SERVICE, async_clear, schema=CLEAR_SERVICE_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, REBUILD_SERVICE, async_rebuild, schema=CLEAR_SERVICE_SCHEMA
     )
