@@ -42,7 +42,7 @@ from .helpers import (
     read_prices,
 )
 
-SCAN_INTERVAL = timedelta(minutes=5)
+SCAN_INTERVAL = timedelta(hours=1)
 RETRY = 3
 
 _LOGGER = logging.getLogger(__name__)
