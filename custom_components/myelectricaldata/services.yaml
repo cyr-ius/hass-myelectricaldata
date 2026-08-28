@@ -70,7 +70,22 @@ clear_data:
       description: set statistic_id , you pick in statistic from developer page
       required: true
       selector:
-        text:
+        entity:
+          filter:
+            integration: myelectricaldata
+            domain: sensor
+    start_date:
+      name: Start Date
+      description: Only clear data from this date onward. Leave empty with no end date to clear all data.
+      required: false
+      selector:
+        datetime:
+    end_date:
+      name: End Date
+      description: Only clear data up to (but excluding) this date. Leave empty with no start date to clear all data.
+      required: false
+      selector:
+        datetime:
 
 # Enedis service.
 rebuild_data:
@@ -82,4 +97,7 @@ rebuild_data:
       description: set statistic_id , you pick in statistic from developer page
       required: true
       selector:
-        text:
+        entity:
+          filter:
+            integration: myelectricaldata
+            domain: sensor
