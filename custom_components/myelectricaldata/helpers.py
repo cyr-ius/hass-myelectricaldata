@@ -1,14 +1,13 @@
 """Helpers functions for MyElectricalData."""
 
-from __future__ import annotations
-
-import contextlib
 import logging
+from dataclasses import dataclass
 from datetime import datetime as dt
 from datetime import timedelta
-from typing import Any
+from typing import Any, override
 
-from homeassistant.components.recorder import get_instance
+from homeassistant.components.recorder import Recorder, get_instance
+from homeassistant.components.recorder.db_schema import Statistics, StatisticsShortTerm
 from homeassistant.components.recorder.models import (
     StatisticData,
     StatisticMeanType,
@@ -19,26 +18,27 @@ from homeassistant.components.recorder.statistics import (
     get_last_statistics,
     statistics_during_period,
 )
+from homeassistant.components.recorder.tasks import RecorderTask
+from homeassistant.components.recorder.util import session_scope
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 from homeassistant.util.unit_conversion import EnergyConverter
+from sqlalchemy import delete
 
 from .const import (
-    CONF_BLUE,
-    CONF_CONSUMPTION,
+    CONF_AUTH,
+    CONF_OFF_PRICE,
     CONF_OFFPEAK,
     CONF_PRICE,
     CONF_PRICINGS,
-    CONF_RED,
+    CONF_PRODUCTION,
     CONF_STD,
-    CONF_WHITE,
     CONSUMPTION_DAILY,
     CONSUMPTION_DETAIL,
     DEFAULT_CC_PRICE,
     DEFAULT_CONSUMPTION_TEMPO,
-    DEFAULT_HC_PRICE,
     DEFAULT_PC_PRICE,
     DOMAIN,
     PRODUCTION_DAILY,
@@ -120,6 +120,7 @@ def build_sensor_items(
                 "entity_id": f"sensor.{slugify(f'{DOMAIN}_{unique_id}')}",
                 "name": name,
                 "friendly_name": f"{mode} {suffix}",
+                "translation_key": f"{mode}_{suffix}",
                 "note": note,
                 "mode": mode,
                 "kind": "energy",
@@ -135,6 +136,7 @@ def build_sensor_items(
                     "entity_id": f"sensor.{slugify(f'{DOMAIN}_{cost_unique_id}')}",
                     "name": f"{name} cost",
                     "friendly_name": f"{mode} {suffix} cost",
+                    "translation_key": f"{mode}_{suffix}_cost",
                     "note": note,
                     "mode": mode,
                     "kind": "cost",
@@ -146,80 +148,50 @@ def build_sensor_items(
     return items
 
 
-def build_price_items(
-    mode: str, pdl: str, service: str, intervals: list[Any], tempo: bool
-) -> list[dict[str, Any]]:
-    """Return one editable-tariff (number entity) descriptor per price needed.
+def read_prices(
+    options: dict[str, Any], mode: str, service: str, intervals: list[Any], tempo: bool
+) -> dict[str, Any]:
+    """Return the tariff(s) configured via the config/options flow, by bucket.
 
     Mirrors build_sensor_items' bucket cardinality: a single price for daily
     services or detail services without offpeak intervals, a standard/offpeak
     pair once offpeak intervals are configured, or the six Tempo colour
     prices when Tempo is enabled (Tempo always needs both buckets).
     """
+    if mode == CONF_PRODUCTION:
+        price = options.get(CONF_PRODUCTION, {}).get(CONF_PRICE, DEFAULT_PC_PRICE)
+        return {CONF_STD: {CONF_PRICE: price}}
+
+    auth = options.get(CONF_AUTH, {})
+    if tempo:
+        return auth.get(CONF_PRICINGS, DEFAULT_CONSUMPTION_TEMPO[CONF_PRICINGS])
+
     is_detail = service in (CONSUMPTION_DETAIL, PRODUCTION_DETAIL)
     has_offpeak = is_detail and bool(intervals)
-
-    items: list[dict[str, Any]] = []
-    if tempo:
-        tempo_defaults = DEFAULT_CONSUMPTION_TEMPO[CONF_PRICINGS]
-        for note in (CONF_STD, CONF_OFFPEAK):
-            for color in (CONF_BLUE, CONF_WHITE, CONF_RED):
-                unique_id = f"{pdl}_{mode}_{note}_{color}"
-                items.append(
-                    {
-                        "unique_id": unique_id,
-                        "entity_id": f"number.{slugify(f'{DOMAIN}_{unique_id}')}",
-                        "name": f"{mode} {note} {color}".capitalize(),
-                        "mode": mode,
-                        "note": note,
-                        "key": color,
-                        "default": tempo_defaults[note][color],
-                    }
-                )
-        return items
-
-    default_std = DEFAULT_CC_PRICE if mode == CONF_CONSUMPTION else DEFAULT_PC_PRICE
-    notes = [CONF_STD, CONF_OFFPEAK] if has_offpeak else [CONF_STD]
-    for note in notes:
-        unique_id = f"{pdl}_{mode}_{note}_{CONF_PRICE}"
-        items.append(
-            {
-                "unique_id": unique_id,
-                "entity_id": f"number.{slugify(f'{DOMAIN}_{unique_id}')}",
-                "name": f"{mode} {note} price".capitalize(),
-                "mode": mode,
-                "note": note,
-                "key": CONF_PRICE,
-                "default": default_std if note == CONF_STD else DEFAULT_HC_PRICE,
-            }
-        )
-    return items
-
-
-def read_prices(hass: HomeAssistant, items: list[dict[str, Any]]) -> dict[str, Any]:
-    """Read the live value of each tariff number entity.
-
-    Falls back to the descriptor's default when the entity isn't available
-    yet (e.g. the very first coordinator refresh, before platforms load).
-    """
-    prices: dict[str, Any] = {}
-    for item in items:
-        state = hass.states.get(item["entity_id"])
-        value = item["default"]
-        if state is not None and state.state not in (None, "unknown", "unavailable"):
-            with contextlib.suppress(ValueError):
-                value = float(state.state)
-        prices.setdefault(item["note"], {})[item["key"]] = value
-    _LOGGER.debug("[prices] %s", prices)
-    return prices
+    if has_offpeak and CONF_OFF_PRICE in auth:
+        return {
+            CONF_STD: {CONF_PRICE: auth[CONF_PRICE]},
+            CONF_OFFPEAK: {CONF_PRICE: auth[CONF_OFF_PRICE]},
+        }
+    return {CONF_STD: {CONF_PRICE: auth.get(CONF_PRICE, DEFAULT_CC_PRICE)}}
 
 
 async def async_import_sensor_statistics(
     hass: HomeAssistant,
     items: list[dict[str, Any]],
     data_collected: dict[str, Any],
-) -> None:
-    """Import statistics directly onto their own real sensor entity."""
+) -> dict[str, tuple[float, dt]]:
+    """Import statistics directly onto their own real sensor entity.
+
+    Returns the last imported (sum, start) per entity_id for items that got
+    new rows. async_import_statistics only enqueues the write on the
+    recorder's own worker thread and returns immediately, it doesn't wait
+    for the write to be committed -- callers that need the freshly imported
+    total right away must use this return value instead of reading it back
+    from the database, which races the still-pending write and can observe
+    stale (e.g. zero) values.
+    """
+    last_stats: dict[str, tuple[float, dt]] = {}
     for item in items:
         rows: list[StatisticData] = []
         for data in data_collected.get(item["mode"], []):
@@ -241,6 +213,12 @@ async def async_import_sensor_statistics(
         if not rows:
             continue
 
+        last_row = max(rows, key=lambda row: row["start"])
+        last_stats[item["entity_id"]] = (
+            last_row["sum"],
+            dt_util.as_local(last_row["start"]),
+        )
+
         _LOGGER.debug("[import_stats] %s -> %s rows", item["entity_id"], len(rows))
         is_energy = item["kind"] == "energy"
         metadata = StatisticMetaData(
@@ -255,43 +233,158 @@ async def async_import_sensor_statistics(
         await get_instance(hass).async_add_executor_job(
             async_import_statistics, hass, metadata, rows
         )
+    return last_stats
 
 
-async def async_reassert_statistics(
-    hass: HomeAssistant, known_sums: dict[str, tuple[dt | None, float, str]]
+@dataclass(slots=True)
+class _ClearShortTermStatisticsTask(RecorderTask):
+    """Delete short-term (5-minute) statistics rows for statistic_ids."""
+
+    statistic_ids: set[str]
+
+    @override
+    def run(self, instance: Recorder) -> None:
+        """Handle the task."""
+        with session_scope(session=instance.get_session()) as session:
+            metadata = instance.statistics_meta_manager.get_many(
+                session, self.statistic_ids
+            )
+            if not (
+                metadata_ids := [metadata_id for metadata_id, _ in metadata.values()]
+            ):
+                return
+            session.execute(
+                delete(StatisticsShortTerm).where(
+                    StatisticsShortTerm.metadata_id.in_(metadata_ids)
+                )
+            )
+
+
+def async_clear_short_term_statistics(
+    hass: HomeAssistant, statistic_ids: set[str]
 ) -> None:
-    """Overwrite the current hour's statistic with our own last known-good sum.
+    """Delete the 5-minute statistics the recorder just compiled for statistic_ids.
 
-    Each PowerSensor's statistic_id is its own entity_id (source="recorder"),
-    so HA's built-in sensor/recorder.py compiler also generates "sum"
-    statistics for it from its live state history, independently of and
-    racing with async_import_sensor_statistics. Called right after
-    EVENT_RECORDER_HOURLY_STATISTICS_GENERATED, this re-writes the current
-    hour with the value we actually imported, undoing whatever the native
-    compiler just wrote for it - unless we ourselves already wrote real data
-    for this exact hour this cycle, in which case there's nothing to correct
-    and doing so would clobber that real per-period state.
+    These entities only ever refresh at SCAN_INTERVAL from data already
+    finalized by async_import_sensor_statistics, so the recorder's own
+    5-minute compilation has nothing new to contribute; left in place it
+    would get folded into the next hourly rollup and clobber the sum
+    async_import_sensor_statistics already imported for that hour.
+
+    Runs as a queued RecorderTask rather than an executor job so the delete
+    is serialized on the recorder's own worker thread: this listener fires
+    right as the recorder finishes writing those same rows, and racing that
+    write from a separate db_executor thread caused sqlite "database is
+    locked" errors.
     """
-    instance = get_instance(hass)
-    hour_start = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
-    for entity_id, (last_real_dt, last_real_sum, kind) in known_sums.items():
-        if last_real_dt is not None and dt_util.as_utc(last_real_dt) >= hour_start:
-            continue  # this hour was legitimately written by us this cycle
+    if not statistic_ids:
+        return
+    get_instance(hass).queue_task(_ClearShortTermStatisticsTask(statistic_ids))
 
-        is_energy = kind == "energy"
-        metadata = StatisticMetaData(
-            has_sum=True,
-            name=None,
-            source="recorder",
-            statistic_id=entity_id,
-            unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR if is_energy else "EUR",
-            mean_type=StatisticMeanType.NONE,
-            unit_class=EnergyConverter.UNIT_CLASS if is_energy else None,
+
+@dataclass(slots=True)
+class _ClearTodayStatisticsTask(RecorderTask):
+    """Delete long-term statistics rows for statistic_ids at or after `since`."""
+
+    statistic_ids: set[str]
+    since: dt
+
+    @override
+    def run(self, instance: Recorder) -> None:
+        """Handle the task."""
+        with session_scope(session=instance.get_session()) as session:
+            metadata = instance.statistics_meta_manager.get_many(
+                session, self.statistic_ids
+            )
+            if not (
+                metadata_ids := [metadata_id for metadata_id, _ in metadata.values()]
+            ):
+                return
+            session.execute(
+                delete(Statistics).where(
+                    Statistics.metadata_id.in_(metadata_ids),
+                    Statistics.start_ts >= self.since.timestamp(),
+                )
+            )
+
+
+def async_clear_today_statistics(hass: HomeAssistant, statistic_ids: set[str]) -> None:
+    """Delete today's long-term statistics the recorder compiled for statistic_ids.
+
+    async_import_sensor_statistics only ever backfills a day once Enedis has
+    published it (never today), so any long-term row the recorder folds
+    together for today comes from the entity's current, not-yet-confirmed
+    state and would otherwise linger, wrong, until tomorrow's import
+    eventually overwrites it.
+
+    The recorder compiles each hour's statistics right at the top of the
+    following hour, so the 23:00-00:00 row is only finalized -- and this
+    called -- a few seconds into the new day. Anchoring "today" on the
+    current wall-clock time at that moment would resolve to the new day's
+    midnight and miss that still-unconfirmed row entirely; backing off a few
+    minutes keeps the anchor on the day that row actually belongs to.
+
+    Runs as a queued RecorderTask; see async_clear_short_term_statistics for
+    why this must be serialized on the recorder's own worker thread.
+    """
+    if not statistic_ids:
+        return
+    since = dt_util.start_of_local_day(dt_util.now() - timedelta(minutes=5))
+    get_instance(hass).queue_task(_ClearTodayStatisticsTask(statistic_ids, since))
+
+
+@dataclass(slots=True)
+class _ClearStatisticsRangeTask(RecorderTask):
+    """Delete long-term statistics rows for statistic_ids within [start, end)."""
+
+    statistic_ids: set[str]
+    start: dt | None
+    end: dt | None
+
+    @override
+    def run(self, instance: Recorder) -> None:
+        """Handle the task."""
+        with session_scope(session=instance.get_session()) as session:
+            metadata = instance.statistics_meta_manager.get_many(
+                session, self.statistic_ids
+            )
+            if not (
+                metadata_ids := [metadata_id for metadata_id, _ in metadata.values()]
+            ):
+                return
+            conditions = [Statistics.metadata_id.in_(metadata_ids)]
+            if self.start is not None:
+                conditions.append(Statistics.start_ts >= self.start.timestamp())
+            if self.end is not None:
+                conditions.append(Statistics.start_ts < self.end.timestamp())
+            session.execute(delete(Statistics).where(*conditions))
+
+
+def async_clear_statistics_range(
+    hass: HomeAssistant,
+    statistic_ids: set[str],
+    start: dt | None = None,
+    end: dt | None = None,
+) -> None:
+    """Delete a statistic's long-term rows within [start, end), keeping its metadata.
+
+    Unlike get_instance(hass).async_clear_statistics, which drops the
+    statistic_id's metadata entirely (removing it from the Energy dashboard
+    until the next import recreates it), this only removes rows in the given
+    window, so a bad backfill for a specific period can be cleared without
+    losing the rest of the entity's history. Omitting a bound leaves that
+    side of the range open (e.g. no end deletes everything from start
+    onward).
+    """
+    if not statistic_ids:
+        return
+    get_instance(hass).queue_task(
+        _ClearStatisticsRangeTask(
+            statistic_ids,
+            dt_util.as_utc(start) if start else None,
+            dt_util.as_utc(end) if end else None,
         )
-        rows = [StatisticData(start=hour_start, state=0, sum=last_real_sum)]
-        await instance.async_add_executor_job(
-            async_import_statistics, hass, metadata, rows
-        )
+    )
 
 
 def _legacy_statistic_id(item: dict[str, Any]) -> str:

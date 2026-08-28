@@ -3,15 +3,36 @@
     "flow_title": "{name}",
     "step": {
       "user": {
-        "title": "Enregistre ton compte Enedis Gateway",
-        "description": "L'abonnement Tempo calculera automatique les réduction sur les périodes BLUE/WHITE/RED. (voir options)",
+        "title": "Enregistre ton compte MyElectricalData",
+        "description": "Récupérer un jeton d'accès sur https://www.myelectricaldata.fr/",
         "data": {
           "pdl": "PDL",
           "token": "Jeton",
           "ecowatt": "Active le sensor Ecowatt",
-          "tempo": "Abonnement Tempo",
+          "abonnement": "Abonnement",
           "production": "Activer la collecte de la production d'énergie",
           "consumption": "Activer la collecte de la consommation d'énergie"
+        }
+      },
+      "pricing": {
+        "title": "Tarifs de l'abonnement",
+        "description": "Saisissez le coût de chaque valeur de votre abonnement.",
+        "data": {
+          "price": "Tarif heures pleines ou standard",
+          "off_price": "Tarif heures creuses",
+          "s_blue": "BLEU : Tarif heures pleines",
+          "s_white": "BLANC : Tarif heures pleines",
+          "s_red": "ROUGE : Tarif heures pleines",
+          "o_blue": "BLEU : Tarif heures creuses",
+          "o_white": "BLANC : Tarif heures creuses",
+          "o_red": "ROUGE : Tarif heures creuses"
+        }
+      },
+      "production_pricing": {
+        "title": "Tarif de production",
+        "description": "Saisissez le tarif de rachat de l'énergie que vous produisez.",
+        "data": {
+          "price": "Tarif de revente"
         }
       }
     },
@@ -39,7 +60,21 @@
         "data": {
           "token": "Jeton",
           "ecowatt": "Activer le sensor Ecowatt",
-          "tempo": "Abonnement Tempo"
+          "abonnement": "Abonnement"
+        }
+      },
+      "pricing": {
+        "title": "Tarifs de l'abonnement",
+        "description": "Saisissez le coût de chaque valeur de votre abonnement.",
+        "data": {
+          "price": "Tarif heures pleines ou standard",
+          "off_price": "Tarif heures creuses",
+          "s_blue": "BLEU : Tarif heures pleines",
+          "s_white": "BLANC : Tarif heures pleines",
+          "s_red": "ROUGE : Tarif heures pleines",
+          "o_blue": "BLEU : Tarif heures creuses",
+          "o_white": "BLANC : Tarif heures creuses",
+          "o_red": "ROUGE : Tarif heures creuses"
         }
       },
       "production": {
@@ -47,7 +82,9 @@
         "description": "Sélectionner le service de collecte:\nDaily: valeur journalière\nDetail: valeur heure par heure",
         "data": {
           "service": "Service",
-          "price": "Tarif de revente"
+          "price": "Tarif de revente",
+          "daily": "Journalier",
+          "detail": "Détaillé"
         }
       },
       "consumption": {
@@ -63,7 +100,10 @@
           "o_red": "ROUGE: Tarif heures creuses",
           "price": "Tarif heures pleines ou standard",
           "off_price": "Tarif heures creuses",
-          "interval_new_id": "Ajouter plage d'heures creuses"
+          "interval_new_id": "Ajouter plage d'heures creuses",
+          "daily": "Journalier",
+          "detail": "Détaillé",
+          "add_new_interval": "Ajouter une nouvelle plage"
         }
       },
       "rules": {
@@ -86,25 +126,40 @@
     }
   },
   "selector": {
+    "subscriber": {
+      "options": {
+        "standard": "Standard",
+        "hphc": "Heures creuses/Heures pleines",
+        "tempo": "Tempo"
+      }
+    },
     "consumption_choice": {
       "options": {
-        "daily": "Journalier",
-        "detail": "Détaillé"
+        "daily_consumption": "Journalier",
+        "consumption_load_curve": "Détaillé"
       }
     },
     "production_choice": {
       "options": {
-        "daily": "Journalier",
-        "detail": "Détaillé"
+        "daily_production": "Journalier",
+        "production_load_curve": "Détaillé"
       }
     },
     "interval_key": {
       "options": {
-        "add_new_interval": "Ajouter une nouvelle plage"
+        "rule_new_id": "Ajouter une nouvelle plage"
       }
     }
   },
   "entity": {
+    "binary_sensor": {
+      "access_token": {
+        "name": "Jeton d'accès"
+      },
+      "offpeak_status": {
+        "name": "Indicateur Heures creuses"
+      }
+    },
     "sensor": {
       "tempo": {
         "state": {
@@ -120,6 +175,68 @@
           "orange": "Orange",
           "red": "Rouge"
         }
+      },
+      "consumption_full": {
+        "name": "Consommation Heures pleines"
+      },
+      "consumption_full_price": {
+        "name": "Tarif Heures pleines"
+      },
+      "consumption_full_cost": {
+        "name": "Cout Heures pleines"
+      },
+      "consumption_offpeak": {
+        "name": "Consommation Heures creuses"
+      },
+      "consumption_offpeak_price": {
+        "name": "Tarif Heures creuses"
+      },
+      "consumption_offpeak_cost": {
+        "name": "Cout Heures creuses"
+      },
+      "consumption_blue_price": {
+        "name": "Tarif Bleu"
+      },
+      "consumption_offpeak_blue_price": {
+        "name": "Tarif Bleu - Heures creuses"
+      },
+      "consumption_white_price": {
+        "name": "Tarif Blanc"
+      },
+      "consumption_offpeak_white_price": {
+        "name": "Tarif Blanc - Heures creuses"
+      },
+      "consumption_red_price": {
+        "name": "Tarif Rouge"
+      },
+      "consumption_offpeak_red_price": {
+        "name": "Tarif Rouge - Heures creuses"
+      },
+      "consumption": {
+        "name": "Consommation",
+        "state": {
+          "daily": "Journalier",
+          "detail": "Détaillé"
+        }
+      },
+      "consomption_cost": {
+        "name": "Tarif de consommation"
+      },
+      "production": {
+        "name": "Production",
+        "state": {
+          "daily": "Journalier",
+          "detail": "Détaillé"
+        }
+      },
+      "production_price": {
+        "name": "Tarif de revente"
+      },
+      "production_cost": {
+        "name": "Bénéfice"
+      },
+      "last_api_call": {
+        "name": "Dernier appel API"
       }
     }
   }

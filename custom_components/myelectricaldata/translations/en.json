@@ -9,9 +9,30 @@
           "pdl": "pdl",
           "token": "token",
           "ecowatt": "Enable Ecowatt sensor",
-          "tempo": "Tempo subscription",
+          "abonnement": "Subscriber",
           "production": "Enable daily production sensor",
           "consumption": "Enable daily consumption sensor"
+        }
+      },
+      "pricing": {
+        "title": "Subscription tariffs",
+        "description": "Enter the cost of each value of your subscription.",
+        "data": {
+          "price": "Price: full hour or standard",
+          "off_price": "Price: off-peak hour",
+          "s_blue": "Price BLUE: full hour",
+          "s_white": "Price WHITE: full hour",
+          "s_red": "Price RED: full hour",
+          "o_blue": "Price BLUE: off-peak hour",
+          "o_white": "Price WHITE: off-peak hour",
+          "o_red": "Price RED: off-peak hour"
+        }
+      },
+      "production_pricing": {
+        "title": "Production tariff",
+        "description": "Enter the buy-back price of the energy you produce.",
+        "data": {
+          "price": "Price"
         }
       }
     },
@@ -39,7 +60,21 @@
         "data": {
           "token": "Token",
           "ecowatt": "Enable Ecowatt sensor",
-          "tempo": "Enable Tempo day sensor"
+          "abonnement": "Subscriber"
+        }
+      },
+      "pricing": {
+        "title": "Subscription tariffs",
+        "description": "Enter the cost of each value of your subscription.",
+        "data": {
+          "price": "Price: full hour or standard",
+          "off_price": "Price: off-peak hour",
+          "s_blue": "Price BLUE: full hour",
+          "s_white": "Price WHITE: full hour",
+          "s_red": "Price RED: full hour",
+          "o_blue": "Price BLUE: off-peak hour",
+          "o_white": "Price WHITE: off-peak hour",
+          "o_red": "Price RED: off-peak hour"
         }
       },
       "production": {
@@ -83,21 +118,28 @@
     }
   },
   "selector": {
+    "subscriber": {
+      "options": {
+        "standard": "Standard",
+        "hphc": "Off-peak/Peak hours",
+        "tempo": "Tempo"
+      }
+    },
     "consumption_choice": {
       "options": {
-        "daily": "Daily",
-        "detail": "Detail"
+        "daily_consumption": "Daily",
+        "consumption_load_curve": "Detail"
       }
     },
     "production_choice": {
       "options": {
-        "daily": "Daily",
-        "detail": "Detail"
+        "daily_production": "Daily",
+        "production_load_curve": "Detail"
       }
     },
     "interval_key": {
       "options": {
-        "add_new_interval": "Add new interval"
+        "rule_new_id": "Add new interval"
       }
     }
   },

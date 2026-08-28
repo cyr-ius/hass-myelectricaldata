@@ -1,7 +1,5 @@
 """Helper module."""
 
-from __future__ import annotations
-
 import logging
 
 import homeassistant.helpers.config_validation as cv
@@ -29,6 +27,7 @@ from .const import (
     CONF_SERVICE,
     CONF_START_DATE,
     CONF_STATISTIC_ID,
+    CONF_SUBSCRIPTION,
     CONF_TEMPO,
     CONSUMPTION_DAILY,
     CONSUMPTION_DETAIL,
@@ -37,10 +36,10 @@ from .const import (
     REBUILD_SERVICE,
 )
 from .helpers import (
+    async_clear_statistics_range,
     async_get_last_infos,
     async_import_sensor_statistics,
     async_rebuild_statistics,
-    build_price_items,
     build_sensor_items,
     read_prices,
 )
@@ -60,6 +59,8 @@ HISTORY_SERVICE_SCHEMA = vol.Schema(
 CLEAR_SERVICE_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_STATISTIC_ID): str,
+        vol.Optional(CONF_START_DATE): cv.datetime,
+        vol.Optional(CONF_END_DATE): cv.datetime,
     }
 )
 
@@ -90,7 +91,8 @@ async def async_services(hass: HomeAssistant):
         ]
 
         # Set price: use the call's override if given, otherwise fall back to
-        # the live value of the tariff number entities (the source of truth).
+        # the tariff configured via the config/options flow (the source of
+        # truth).
         if price := call.data.get(CONF_PRICE):
             prices = {"standard": {CONF_PRICE: price}}
             if len(intervals) != 0 and (off_price := call.data.get(CONF_OFF_PRICE)):
@@ -98,15 +100,15 @@ async def async_services(hass: HomeAssistant):
             else:
                 intervals = []
         else:
-            tempo = mode == CONF_CONSUMPTION and bool(
-                options.get(CONF_AUTH, {}).get(CONF_TEMPO)
+            tempo = mode == CONF_CONSUMPTION and (
+                options.get(CONF_AUTH, {}).get(CONF_SUBSCRIPTION) == CONF_TEMPO
             )
-            prices = read_prices(
-                hass, build_price_items(mode, pdl, service, intervals, tempo)
-            )
+            prices = read_prices(options, mode, service, intervals, tempo)
 
         # Get sensor items for this mode/service
-        items = build_sensor_items(mode, pdl, service, intervals, has_price=bool(prices))
+        items = build_sensor_items(
+            mode, pdl, service, intervals, has_price=bool(prices)
+        )
 
         api = EnedisByPDL(
             pdl=pdl,
@@ -141,12 +143,19 @@ async def async_services(hass: HomeAssistant):
 
     @callback
     async def async_clear(call: ServiceCall) -> None:
-        """Clear data in database."""
+        """Clear data in database, optionally restricted to a date range."""
         statistic_id = call.data[CONF_STATISTIC_ID]
         if not statistic_id.startswith(f"sensor.{DOMAIN}_"):
             _LOGGER.error("Statistic_id is incorrect %s", statistic_id)
             return
-        get_instance(hass).async_clear_statistics([statistic_id])
+        start_date = call.data.get(CONF_START_DATE)
+        end_date = call.data.get(CONF_END_DATE)
+        if start_date or end_date:
+            async_clear_statistics_range(
+                hass, {statistic_id}, start=start_date, end=end_date
+            )
+        else:
+            get_instance(hass).async_clear_statistics([statistic_id])
 
     @callback
     async def async_rebuild(call: ServiceCall) -> None:
@@ -161,7 +170,9 @@ async def async_services(hass: HomeAssistant):
             _LOGGER.error("Statistic_id is incorrect %s", statistic_id)
             return
         kind = "cost" if statistic_id.endswith("_cost") else "energy"
-        await async_rebuild_statistics(hass, [{"entity_id": statistic_id, "kind": kind}])
+        await async_rebuild_statistics(
+            hass, [{"entity_id": statistic_id, "kind": kind}]
+        )
 
     hass.services.async_register(
         DOMAIN, FETCH_SERVICE, async_reload_history, schema=HISTORY_SERVICE_SCHEMA

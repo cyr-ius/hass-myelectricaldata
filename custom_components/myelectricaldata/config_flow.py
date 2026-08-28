@@ -1,7 +1,5 @@
 """Config flow to configure integration."""
 
-from __future__ import annotations
-
 import logging
 from datetime import datetime as dt
 from typing import Any
@@ -25,21 +23,35 @@ from myelectricaldatapy import Enedis, EnedisException
 
 from .const import (
     CONF_AUTH,
+    CONF_BLUE,
     CONF_CONSUMPTION,
     CONF_ECOWATT,
+    CONF_HPHC,
     CONF_INTERVALS,
+    CONF_OFF_PRICE,
+    CONF_OFFPEAK,
     CONF_PDL,
+    CONF_PRICE,
+    CONF_PRICINGS,
     CONF_PRODUCTION,
+    CONF_RED,
     CONF_RULE_DELETE,
     CONF_RULE_END_TIME,
     CONF_RULE_ID,
     CONF_RULE_NEW_ID,
     CONF_RULE_START_TIME,
     CONF_SERVICE,
+    CONF_STD,
+    CONF_SUBSCRIPTION,
     CONF_TEMPO,
+    CONF_WHITE,
     CONSUMPTION_DAILY,
     CONSUMPTION_DETAIL,
+    DEFAULT_CC_PRICE,
     DEFAULT_CONSUMPTION_TEMPO,
+    DEFAULT_HC_PRICE,
+    DEFAULT_HP_PRICE,
+    DEFAULT_PC_PRICE,
     DOMAIN,
     PRODUCTION_DAILY,
     PRODUCTION_DETAIL,
@@ -47,14 +59,19 @@ from .const import (
 )
 
 PRODUCTION_CHOICE = [
-    SelectOptionDict(value=PRODUCTION_DAILY, label="daily"),
-    SelectOptionDict(value=PRODUCTION_DETAIL, label="detail"),
+    SelectOptionDict(value=PRODUCTION_DAILY, label=PRODUCTION_DAILY),
+    SelectOptionDict(value=PRODUCTION_DETAIL, label=PRODUCTION_DETAIL),
 ]
 CONSUMPTION_CHOICE = [
-    SelectOptionDict(value=CONSUMPTION_DAILY, label="daily"),
-    SelectOptionDict(value=CONSUMPTION_DETAIL, label="detail"),
+    SelectOptionDict(value=CONSUMPTION_DAILY, label=CONSUMPTION_DAILY),
+    SelectOptionDict(value=CONSUMPTION_DETAIL, label=CONSUMPTION_DETAIL),
 ]
 
+SUBSCRIBER_CHOICE = [
+    SelectOptionDict(value=CONF_STD, label=CONF_STD),
+    SelectOptionDict(value=CONF_HPHC, label=CONF_HPHC),
+    SelectOptionDict(value=CONF_TEMPO, label=CONF_TEMPO),
+]
 
 DATA_SCHEMA = vol.Schema(
     {
@@ -63,17 +80,90 @@ DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_ECOWATT, default=False): bool,
         vol.Required(CONF_PRODUCTION, default=False): bool,
         vol.Required(CONF_CONSUMPTION, default=False): bool,
-        vol.Required(CONF_TEMPO, default=False): bool,
+        vol.Required(CONF_SUBSCRIPTION, default=CONF_STD): SelectSelector(
+            SelectSelectorConfig(
+                options=SUBSCRIBER_CHOICE, translation_key="subscriber"
+            )
+        ),
     }
 )
 
+_PRICING_KEYS = (CONF_PRICE, CONF_OFF_PRICE, CONF_PRICINGS)
+
 _LOGGER = logging.getLogger(__name__)
+
+
+def _subscription_pricing_schema(
+    subscription: str, current: dict[str, Any]
+) -> vol.Schema:
+    """Return the tariff fields relevant to the given subscription type."""
+    if subscription == CONF_HPHC:
+        return vol.Schema(
+            {
+                vol.Required(
+                    CONF_PRICE, default=current.get(CONF_PRICE, DEFAULT_HP_PRICE)
+                ): vol.Coerce(float),
+                vol.Required(
+                    CONF_OFF_PRICE,
+                    default=current.get(CONF_OFF_PRICE, DEFAULT_HC_PRICE),
+                ): vol.Coerce(float),
+            }
+        )
+    if subscription == CONF_TEMPO:
+        pricings = current.get(CONF_PRICINGS, {})
+        defaults = DEFAULT_CONSUMPTION_TEMPO[CONF_PRICINGS]
+        schema: dict[Any, Any] = {}
+        for note, prefix in ((CONF_STD, "s"), (CONF_OFFPEAK, "o")):
+            for color in (CONF_BLUE, CONF_WHITE, CONF_RED):
+                default = pricings.get(note, {}).get(color, defaults[note][color])
+                schema[vol.Required(f"{prefix}_{color}", default=default)] = vol.Coerce(
+                    float
+                )
+        return vol.Schema(schema)
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_PRICE, default=current.get(CONF_PRICE, DEFAULT_CC_PRICE)
+            ): vol.Coerce(float)
+        }
+    )
+
+
+def _extract_subscription_prices(
+    subscription: str, user_input: dict[str, Any]
+) -> dict[str, Any]:
+    """Build the auth-dict pricing fields from a submitted pricing form."""
+    if subscription == CONF_HPHC:
+        return {
+            CONF_PRICE: user_input[CONF_PRICE],
+            CONF_OFF_PRICE: user_input[CONF_OFF_PRICE],
+        }
+    if subscription == CONF_TEMPO:
+        return {
+            CONF_PRICINGS: {
+                CONF_STD: {
+                    color: user_input[f"s_{color}"]
+                    for color in (CONF_BLUE, CONF_WHITE, CONF_RED)
+                },
+                CONF_OFFPEAK: {
+                    color: user_input[f"o_{color}"]
+                    for color in (CONF_BLUE, CONF_WHITE, CONF_RED)
+                },
+            }
+        }
+    return {CONF_PRICE: user_input[CONF_PRICE]}
 
 
 class MyElectricalFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow."""
 
-    VERSION = 1
+    VERSION = 3
+
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        self._data: dict[str, Any] = {}
+        self._prices: dict[str, Any] = {}
+        self._production_price: float | None = None
 
     @staticmethod
     @callback
@@ -97,26 +187,66 @@ class MyElectricalFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.error(error)
                 errors["base"] = "cannot_connect"
             else:
-                data = {CONF_PDL: user_input[CONF_PDL]}
-                opts = {
-                    CONF_AUTH: {
-                        CONF_TOKEN: user_input[CONF_TOKEN],
-                        CONF_ECOWATT: user_input[CONF_ECOWATT],
-                        CONF_TEMPO: user_input[CONF_TEMPO],
-                    }
-                }
-                if user_input[CONF_PRODUCTION]:
-                    opts.update({CONF_PRODUCTION: {CONF_SERVICE: PRODUCTION_DAILY}})
-                if user_input[CONF_CONSUMPTION]:
-                    opts.update({CONF_CONSUMPTION: {CONF_SERVICE: CONSUMPTION_DAILY}})
-
-                options = default_settings(opts)
-                return self.async_create_entry(
-                    title=f"Linky ({user_input[CONF_PDL]})", data=data, options=options
-                )
+                self._data = user_input
+                return await self.async_step_pricing()
 
         return self.async_show_form(
             step_id="user", data_schema=DATA_SCHEMA, errors=errors
+        )
+
+    async def async_step_pricing(self, user_input: dict[str, Any] | None = None):
+        """Collect the tariff(s) matching the chosen subscription."""
+        subscription = self._data[CONF_SUBSCRIPTION]
+        if user_input is not None:
+            self._prices = _extract_subscription_prices(subscription, user_input)
+            if self._data[CONF_PRODUCTION]:
+                return await self.async_step_production_pricing()
+            return self._async_create_entry()
+
+        return self.async_show_form(
+            step_id="pricing",
+            data_schema=_subscription_pricing_schema(subscription, {}),
+            last_step=not self._data[CONF_PRODUCTION],
+        )
+
+    async def async_step_production_pricing(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Collect the cost per kWh of the energy the user produces."""
+        if user_input is not None:
+            self._production_price = user_input[CONF_PRICE]
+            return self._async_create_entry()
+
+        return self.async_show_form(
+            step_id="production_pricing",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_PRICE, default=DEFAULT_PC_PRICE): vol.Coerce(float)}
+            ),
+        )
+
+    @callback
+    def _async_create_entry(self) -> FlowResult:
+        """Create the config entry from the data collected across the flow."""
+        data = {CONF_PDL: self._data[CONF_PDL]}
+        opts: dict[str, Any] = {
+            CONF_AUTH: {
+                CONF_TOKEN: self._data[CONF_TOKEN],
+                CONF_ECOWATT: self._data[CONF_ECOWATT],
+                CONF_SUBSCRIPTION: self._data[CONF_SUBSCRIPTION],
+                **self._prices,
+            }
+        }
+        if self._data[CONF_PRODUCTION]:
+            opts[CONF_PRODUCTION] = {
+                CONF_SERVICE: PRODUCTION_DAILY,
+                CONF_PRICE: self._production_price,
+            }
+        if self._data[CONF_CONSUMPTION]:
+            opts[CONF_CONSUMPTION] = {CONF_SERVICE: CONSUMPTION_DAILY}
+
+        options = default_settings(opts)
+        return self.async_create_entry(
+            title=f"Linky ({self._data[CONF_PDL]})", data=data, options=options
         )
 
 
@@ -158,16 +288,37 @@ class MyElectricalDataOptionsFlowHandler(config_entries.OptionsFlow):
                     default=self._data[step_id].get(CONF_ECOWATT, False),
                 ): bool,
                 vol.Required(
-                    CONF_TEMPO,
-                    default=self._data[step_id].get(CONF_TEMPO, False),
-                ): bool,
+                    CONF_SUBSCRIPTION,
+                    default=self._data[step_id].get(CONF_SUBSCRIPTION, CONF_STD),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=SUBSCRIBER_CHOICE, translation_key="subscriber"
+                    )
+                ),
             }
         )
         if user_input is not None:
             self._data[step_id].update(**user_input)
-            return await self.async_step_init()
+            return await self.async_step_pricing()
         return self.async_show_form(
             step_id=step_id, data_schema=schema, last_step=False
+        )
+
+    async def async_step_pricing(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Collect the tariff(s) matching the chosen subscription."""
+        auth = self._data[CONF_AUTH]
+        subscription = auth[CONF_SUBSCRIPTION]
+        if user_input is not None:
+            for key in _PRICING_KEYS:
+                auth.pop(key, None)
+            auth.update(_extract_subscription_prices(subscription, user_input))
+            return await self.async_step_init()
+        return self.async_show_form(
+            step_id="pricing",
+            data_schema=_subscription_pricing_schema(subscription, auth),
+            last_step=False,
         )
 
     async def async_step_production(self, user_input: dict[str, Any] | None = None):
@@ -188,10 +339,19 @@ class MyElectricalDataOptionsFlowHandler(config_entries.OptionsFlow):
                         translation_key="production_choice",
                     )
                 ),
+                vol.Required(
+                    CONF_PRICE,
+                    default=self._data[step_id].get(CONF_PRICE, DEFAULT_PC_PRICE),
+                ): vol.Coerce(float),
             }
         )
         if user_input is not None:
-            self._data[step_id].update({CONF_SERVICE: user_input.get(CONF_SERVICE)})
+            self._data[step_id].update(
+                {
+                    CONF_SERVICE: user_input.get(CONF_SERVICE),
+                    CONF_PRICE: user_input[CONF_PRICE],
+                }
+            )
             return await self.async_step_init()
         return self.async_show_form(
             step_id=step_id, data_schema=schema, last_step=False
@@ -238,7 +398,7 @@ class MyElectricalDataOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Save the updated options."""
         self._data = default_settings(self._data)
-        self._data.update({"last_update": dt.now()})  # noqa: DTZ005
+        self._data.update({"last_update": dt.now()})
         return self.async_create_entry(title="", data=self._data)
 
     async def async_step_rules(
@@ -314,7 +474,7 @@ class MyElectricalDataOptionsFlowHandler(config_entries.OptionsFlow):
             for rule_id, v in intervals.items()
         ]
         list_intervals.append(
-            SelectOptionDict(value=CONF_RULE_NEW_ID, label="add_new_interval")
+            SelectOptionDict(value=CONF_RULE_NEW_ID, label=CONF_RULE_NEW_ID)
         )
 
         return list_intervals
@@ -323,17 +483,19 @@ class MyElectricalDataOptionsFlowHandler(config_entries.OptionsFlow):
 def default_settings(data: dict[str, Any]):
     """Set default data if missing.
 
-    Tariffs themselves are no longer stored here: they live in the editable
-    Number entities (see number.py), which are the source of truth read by
-    the coordinator. This only takes care of forcing the detail service with
-    its default offpeak windows once Tempo gets enabled, since Tempo always
-    needs the load curve split into standard/offpeak.
+    Tariffs live directly under CONF_AUTH (a single price, a peak/offpeak
+    pair, or the six Tempo colour prices, depending on the subscription) and
+    under CONF_PRODUCTION, entered via the config/options flow and mirrored
+    read-only by the price sensors (see sensor.py). This only takes care of
+    forcing the detail service with its default offpeak windows once Tempo
+    gets enabled, since Tempo always needs the load curve split into
+    standard/offpeak.
     """
     auth = data.get(CONF_AUTH, {})
     consumption = data.get(CONF_CONSUMPTION)
     if (
         consumption
-        and auth.get(CONF_TEMPO)
+        and auth.get(CONF_SUBSCRIPTION) == CONF_TEMPO
         and consumption.get(CONF_SERVICE) != CONSUMPTION_DETAIL
     ):
         data[CONF_CONSUMPTION] = {
