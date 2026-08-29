@@ -43,6 +43,7 @@ from .helpers import (
     async_get_last_infos,
     async_import_sensor_statistics,
     async_migrate_legacy_statistics,
+    async_rebuild_statistics,
     build_sensor_items,
     next_date,
     read_prices,
@@ -281,6 +282,21 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             async_import_sensor_statistics(self.hass, items, self.api.stats),
             "statistics",
         )
+
+        if last_stats:
+            # The chunk just imported was seeded from whatever cum_value
+            # snapshot async_get_last_infos happened to read this cycle; if
+            # that snapshot didn't match what's already in the database
+            # (e.g. a same-day stub row async_clear_today_statistics hasn't
+            # cleared yet), the new rows land at the wrong level. Rebuilding
+            # reconnects the seam the same way the manual backfill service
+            # already does for out-of-order chunks.
+            rebuilt = await async_rebuild_statistics(
+                self.hass,
+                [item for item in items if item[CONF_ENTITY_ID] in last_stats],
+            )
+            for entity_id, summary in rebuilt.items():
+                last_stats[entity_id] = (summary, last_stats[entity_id][1])
 
         sensors_data = {}
         for item in items:

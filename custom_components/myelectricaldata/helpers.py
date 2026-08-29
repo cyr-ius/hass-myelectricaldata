@@ -470,24 +470,28 @@ async def async_migrate_legacy_statistics(
 
 async def async_rebuild_statistics(
     hass: HomeAssistant, items: list[dict[str, Any]]
-) -> None:
+) -> dict[str, float]:
     """Recompute a clean, monotonic cumulative sum across an entity's full history.
 
-    A manual backfill (see services.FETCH_SERVICE) is typically done in
-    several chunks spread over several days to stay under Enedis' daily
-    quota, and can land before, after, or in the middle of data that's
-    already there. Each chunk's "sum" column is computed locally by
-    EnedisAnalytics from whatever baseline was known at import time, so
-    stitching chunks together out of order leaves discontinuities at the
-    seams (a value the last chunk imported doesn't know about the running
-    total of a chunk imported afterward that precedes it).
+    A backfill -- manual (see services.FETCH_SERVICE) or the coordinator's own
+    per-cycle import -- can leave a discontinuity at the seam where a newly
+    imported chunk meets what's already there (its "sum" column is computed
+    locally by EnedisAnalytics from whatever baseline was known at import
+    time, which doesn't always match the database, e.g. a same-day stub row
+    not yet cleared by async_clear_today_statistics).
 
     This re-reads every raw state value for the statistic (chronologically,
     across its whole history) and rewrites the sum as a plain running total
     from zero, so the result is correct regardless of how many calls it took
     to get there or in what order. No Enedis API call involved.
+
+    Returns the rebuilt final sum per entity_id for items that had any
+    statistics at all, for callers that need the corrected total right away
+    instead of racing the still-pending recorder write (see
+    async_import_sensor_statistics).
     """
     instance = get_instance(hass)
+    final_sums: dict[str, float] = {}
     for item in items:
         statistic_id = item["entity_id"]
         result = await instance.async_add_executor_job(
@@ -529,7 +533,9 @@ async def async_rebuild_statistics(
         await instance.async_add_executor_job(
             async_import_statistics, hass, metadata, rows
         )
+        final_sums[statistic_id] = running_sum
         _LOGGER.info("Rebuilt %s statistic points for %s", len(rows), statistic_id)
+    return final_sums
 
 
 def next_date(date_: dt | None, service: str) -> dt:
