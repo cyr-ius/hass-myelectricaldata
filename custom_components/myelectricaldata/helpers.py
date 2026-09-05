@@ -25,24 +25,25 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 from homeassistant.util.unit_conversion import EnergyConverter
+from myelectricaldatapy import (
+    ATTR_OFFPEAK,
+    ATTR_PRICE,
+    ATTR_PRICES,
+    ATTR_STANDARD,
+    DAILY_CONSUM,
+    DAILY_PROD,
+    DETAIL_CONSUM,
+    DETAIL_PROD,
+)
 from sqlalchemy import delete
 
 from .const import (
-    CONF_AUTH,
-    CONF_OFF_PRICE,
-    CONF_OFFPEAK,
-    CONF_PRICE,
-    CONF_PRICINGS,
+    CONF_CONSUMPTION,
     CONF_PRODUCTION,
-    CONF_STD,
-    CONSUMPTION_DAILY,
-    CONSUMPTION_DETAIL,
     DEFAULT_CC_PRICE,
     DEFAULT_CONSUMPTION_TEMPO,
     DEFAULT_PC_PRICE,
     DOMAIN,
-    PRODUCTION_DAILY,
-    PRODUCTION_DETAIL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -106,26 +107,25 @@ def build_sensor_items(
     A "cost" companion item is added next to each energy bucket when pricing
     is configured.
     """
-    is_detail = service in (CONSUMPTION_DETAIL, PRODUCTION_DETAIL)
-    notes = [CONF_STD, CONF_OFFPEAK] if is_detail and intervals else [CONF_STD]
+    is_detail = service in (DETAIL_CONSUM, DETAIL_PROD)
+    notes = (
+        [ATTR_STANDARD, ATTR_OFFPEAK]
+        if is_detail and intervals
+        else [ATTR_STANDARD]
+    )
 
     items: list[dict[str, Any]] = []
     for note in notes:
-        suffix = note if len(notes) == 1 else ("full" if note == CONF_STD else note)
+        suffix = "full" if is_detail and note == ATTR_STANDARD else ATTR_OFFPEAK
         unique_id = f"{pdl}_{mode}_{suffix}"
-        name = f"{pdl} {mode} {suffix}".capitalize()
         items.append(
             {
                 "unique_id": unique_id,
                 "entity_id": f"sensor.{slugify(f'{DOMAIN}_{unique_id}')}",
-                "name": name,
-                "friendly_name": f"{mode} {suffix}",
-                "translation_key": f"{mode}_{suffix}",
                 "note": note,
                 "mode": mode,
                 "kind": "energy",
                 "pdl": pdl,
-                "suffix": suffix,
             }
         )
         if has_price:
@@ -134,14 +134,10 @@ def build_sensor_items(
                 {
                     "unique_id": cost_unique_id,
                     "entity_id": f"sensor.{slugify(f'{DOMAIN}_{cost_unique_id}')}",
-                    "name": f"{name} cost",
-                    "friendly_name": f"{mode} {suffix} cost",
-                    "translation_key": f"{mode}_{suffix}_cost",
                     "note": note,
                     "mode": mode,
                     "kind": "cost",
                     "pdl": pdl,
-                    "suffix": suffix,
                 }
             )
     _LOGGER.debug("[items] %s", items)
@@ -159,21 +155,19 @@ def read_prices(
     prices when Tempo is enabled (Tempo always needs both buckets).
     """
     if mode == CONF_PRODUCTION:
-        price = options.get(CONF_PRODUCTION, {}).get(CONF_PRICE, DEFAULT_PC_PRICE)
-        return {CONF_STD: {CONF_PRICE: price}}
+        prices = options.get(CONF_PRODUCTION, {}).get(ATTR_PRICES, {})
+        return prices or {ATTR_STANDARD: {ATTR_PRICE: DEFAULT_PC_PRICE}}
 
-    auth = options.get(CONF_AUTH, {})
+    prices = options.get(CONF_CONSUMPTION, {}).get(ATTR_PRICES, {})
     if tempo:
-        return auth.get(CONF_PRICINGS, DEFAULT_CONSUMPTION_TEMPO[CONF_PRICINGS])
+        return prices or DEFAULT_CONSUMPTION_TEMPO[ATTR_PRICES]
 
-    is_detail = service in (CONSUMPTION_DETAIL, PRODUCTION_DETAIL)
+    is_detail = service in (DETAIL_CONSUM, DETAIL_PROD)
     has_offpeak = is_detail and bool(intervals)
-    if has_offpeak and CONF_OFF_PRICE in auth:
-        return {
-            CONF_STD: {CONF_PRICE: auth[CONF_PRICE]},
-            CONF_OFFPEAK: {CONF_PRICE: auth[CONF_OFF_PRICE]},
-        }
-    return {CONF_STD: {CONF_PRICE: auth.get(CONF_PRICE, DEFAULT_CC_PRICE)}}
+    standard = prices.get(ATTR_STANDARD, {ATTR_PRICE: DEFAULT_CC_PRICE})
+    if has_offpeak and ATTR_OFFPEAK in prices:
+        return {ATTR_STANDARD: standard, ATTR_OFFPEAK: prices[ATTR_OFFPEAK]}
+    return {ATTR_STANDARD: standard}
 
 
 async def async_import_sensor_statistics(
@@ -393,7 +387,7 @@ def _legacy_statistic_id(item: dict[str, Any]) -> str:
     Kept only so async_migrate_legacy_statistics can locate and copy the
     history collected before statistics moved onto real sensor entities.
     """
-    name = f"{item['pdl']} {item['mode']} {item['suffix']}".capitalize()
+    name = f"{item['pdl']} {item['mode']} {item['note']}".capitalize()
     legacy_id = f"{DOMAIN}:" + slugify(name.lower())
     if item["kind"] == "cost":
         legacy_id = f"{legacy_id}_cost"
@@ -548,12 +542,12 @@ def next_date(date_: dt | None, service: str) -> dt:
     """
     if date_ and date_.tzinfo is not None:
         date_ = date_.replace(tzinfo=None)
-    if date_ and service in [PRODUCTION_DETAIL, CONSUMPTION_DETAIL]:
+    if date_ and service in [DETAIL_PROD, DETAIL_CONSUM]:
         return date_ + timedelta(hours=1)
-    elif date_:
+    if date_:
         return date_ + timedelta(days=1)
     return (
         dt_util.now().replace(tzinfo=None) - timedelta(days=1095)
-        if service in [PRODUCTION_DAILY, CONSUMPTION_DAILY]
+        if service in [DAILY_PROD, DAILY_CONSUM]
         else dt_util.now().replace(tzinfo=None) - timedelta(days=7)
     )

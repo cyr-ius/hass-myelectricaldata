@@ -9,7 +9,17 @@ from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from myelectricaldatapy import EnedisByPDL
+from myelectricaldatapy import (
+    ATTR_INTERVALS,
+    ATTR_OFFPEAK,
+    ATTR_PRICE,
+    ATTR_STANDARD,
+    ATTR_TEMPO,
+    DAILY_CONSUM,
+    DETAIL_CONSUM,
+    EnedisByPDL,
+    Service,
+)
 
 from .const import (
     CLEAR_SERVICE,
@@ -17,10 +27,8 @@ from .const import (
     CONF_CONSUMPTION,
     CONF_END_DATE,
     CONF_ENTRY,
-    CONF_INTERVALS,
     CONF_OFF_PRICE,
     CONF_PDL,
-    CONF_PRICE,
     CONF_PRODUCTION,
     CONF_RULE_END_TIME,
     CONF_RULE_START_TIME,
@@ -28,9 +36,6 @@ from .const import (
     CONF_START_DATE,
     CONF_STATISTIC_ID,
     CONF_SUBSCRIPTION,
-    CONF_TEMPO,
-    CONSUMPTION_DAILY,
-    CONSUMPTION_DETAIL,
     DOMAIN,
     FETCH_SERVICE,
     REBUILD_SERVICE,
@@ -52,7 +57,7 @@ HISTORY_SERVICE_SCHEMA = vol.Schema(
         vol.Required(CONF_SERVICE): str,
         vol.Required(CONF_START_DATE): cv.datetime,
         vol.Required(CONF_END_DATE): cv.datetime,
-        vol.Optional(CONF_PRICE): cv.positive_float,
+        vol.Optional(ATTR_PRICE): cv.positive_float,
         vol.Optional(CONF_OFF_PRICE): cv.positive_float,
     }
 )
@@ -74,17 +79,17 @@ async def async_services(hass: HomeAssistant):
         entry = hass.config_entries.async_get_entry(call.data[CONF_ENTRY])
         if entry is None:
             raise ServiceValidationError("Config entry not found")
-        service = call.data[CONF_SERVICE]
+        service: Service = call.data[CONF_SERVICE]
         options = entry.options
         pdl = entry.data[CONF_PDL]
         start_date = call.data[CONF_START_DATE]
         end_date = call.data[CONF_END_DATE]
         mode = (
             CONF_CONSUMPTION
-            if service in [CONSUMPTION_DAILY, CONSUMPTION_DETAIL]
+            if service in [DAILY_CONSUM, DETAIL_CONSUM]
             else CONF_PRODUCTION
         )
-        intervals = options.get(mode, {}).get(CONF_INTERVALS, {})
+        intervals = options.get(mode, {}).get(ATTR_INTERVALS, {})
         intervals = [
             (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
             for interval in intervals.values()
@@ -93,15 +98,15 @@ async def async_services(hass: HomeAssistant):
         # Set price: use the call's override if given, otherwise fall back to
         # the tariff configured via the config/options flow (the source of
         # truth).
-        if price := call.data.get(CONF_PRICE):
-            prices = {"standard": {CONF_PRICE: price}}
+        if price := call.data.get(ATTR_PRICE):
+            prices = {ATTR_STANDARD: {ATTR_PRICE: price}}
             if len(intervals) != 0 and (off_price := call.data.get(CONF_OFF_PRICE)):
-                prices.update({"offpeak": {CONF_PRICE: off_price}})
+                prices.update({ATTR_OFFPEAK: {ATTR_PRICE: off_price}})
             else:
                 intervals = []
         else:
             tempo = mode == CONF_CONSUMPTION and (
-                options.get(CONF_AUTH, {}).get(CONF_SUBSCRIPTION) == CONF_TEMPO
+                options[CONF_AUTH][CONF_SUBSCRIPTION] == ATTR_TEMPO
             )
             prices = read_prices(options, mode, service, intervals, tempo)
 
@@ -113,6 +118,7 @@ async def async_services(hass: HomeAssistant):
         api = EnedisByPDL(
             pdl=pdl,
             token=options[CONF_AUTH][CONF_TOKEN],
+            subscription=options[CONF_AUTH][CONF_SUBSCRIPTION],
             session=async_create_clientsession(hass),
             timeout=30,
         )
@@ -121,7 +127,7 @@ async def async_services(hass: HomeAssistant):
         _, sum_values, sum_prices = await async_get_last_infos(hass, items)
 
         # Set api collector
-        api.set_collects(
+        api.set_data_fetch(
             service,
             start=start_date,
             end=end_date,

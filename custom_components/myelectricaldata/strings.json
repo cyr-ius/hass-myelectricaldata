@@ -18,8 +18,8 @@
         "title": "Subscription tariffs",
         "description": "Enter the cost of each value of your subscription.",
         "data": {
-          "price": "Price: full hour or standard",
-          "off_price": "Price: off-peak hour",
+          "standard": "Price: full hour or standard",
+          "offpeak": "Price: off-peak hour",
           "s_blue": "Price BLUE: full hour",
           "s_white": "Price WHITE: full hour",
           "s_red": "Price RED: full hour",
@@ -32,7 +32,24 @@
         "title": "Production tariff",
         "description": "Enter the buy-back price of the energy you produce.",
         "data": {
-          "price": "Price"
+          "standard": "Price"
+        }
+      },
+      "intervals": {
+        "title": "Off-peak ranges",
+        "description": "Adjust the off-peak windows split from the load curve. They default to 22:00 -> 06:00. Leave the selection empty to continue.",
+        "data": {
+          "intervals": "[%key:component::myelectricaldata::options::step::consumption::data::intervals%]"
+        }
+      },
+      "rules": {
+        "title": "[%key:component::myelectricaldata::options::step::rules::title%]",
+        "description": "[%key:component::myelectricaldata::options::step::rules::description%]",
+        "data": {
+          "rule_id": "[%key:component::myelectricaldata::options::step::rules::data::rule_id%]",
+          "rule_start_time": "[%key:component::myelectricaldata::options::step::rules::data::rule_start_time%]",
+          "rule_end_time": "[%key:component::myelectricaldata::options::step::rules::data::rule_end_time%]",
+          "rule_delete": "[%key:component::myelectricaldata::options::step::rules::data::rule_delete%]"
         }
       }
     },
@@ -67,8 +84,8 @@
         "title": "Subscription tariffs",
         "description": "Enter the cost of each value of your subscription.",
         "data": {
-          "price": "Price: full hour or standard",
-          "off_price": "Price: off-peak hour",
+          "standard": "Price: full hour or standard",
+          "offpeak": "Price: off-peak hour",
           "s_blue": "Price BLUE: full hour",
           "s_white": "Price WHITE: full hour",
           "s_red": "Price RED: full hour",
@@ -80,14 +97,12 @@
       "production": {
         "title": "Production",
         "data": {
-          "step_id": "Service",
-          "price": "Price"
+          "standard": "Price"
         }
       },
       "consumption": {
         "title": "Consumption",
         "data": {
-          "step_id": "Service",
           "s_blue": "Price BLUE: full hour",
           "s_white": "Price WHITE: full hour",
           "s_red": "Price RED: full hour",
@@ -95,7 +110,8 @@
           "o_white": "Price WHITE: off-peak hour",
           "o_red": "Price RED: off-peak hour",
           "price": "Price: full hour",
-          "off_price": "Price: off-peak hour",
+          "offpeak": "Price: off-peak hour",
+          "intervals": "Off-peak ranges",
           "interval_new_id": "Add new offpeak range"
         }
       },
@@ -104,7 +120,6 @@
         "description": "Add new range for tarification",
         "data": {
           "rule_id": "Rule id",
-          "step_id": "Service",
           "rule_start_time": "Start time",
           "rule_end_time": "End time",
           "rule_delete": "Delete this range"

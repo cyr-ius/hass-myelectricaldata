@@ -28,5 +28,7 @@ class MyElectricalEntity(CoordinatorEntity[EnedisDataUpdateCoordinator]):
             name=f"{DOMAIN} ({coordinator.pdl})",
             configuration_url=URL,
             manufacturer=MANUFACTURER,
-            model=coordinator.api.contract.get("subscribed_power"),
+            model=coordinator.api.contract.subscribed_power
+            if coordinator.api.contract is not None
+            else None,
         )

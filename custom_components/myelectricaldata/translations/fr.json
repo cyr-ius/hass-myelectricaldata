@@ -18,8 +18,8 @@
         "title": "Tarifs de l'abonnement",
         "description": "Saisissez le coût de chaque valeur de votre abonnement.",
         "data": {
-          "price": "Tarif heures pleines ou standard",
-          "off_price": "Tarif heures creuses",
+          "standard": "Tarif heures pleines ou standard",
+          "offpeak": "Tarif heures creuses",
           "s_blue": "BLEU : Tarif heures pleines",
           "s_white": "BLANC : Tarif heures pleines",
           "s_red": "ROUGE : Tarif heures pleines",
@@ -32,7 +32,24 @@
         "title": "Tarif de production",
         "description": "Saisissez le tarif de rachat de l'énergie que vous produisez.",
         "data": {
-          "price": "Tarif de revente"
+          "standard": "Tarif de revente"
+        }
+      },
+      "intervals": {
+        "title": "Plages heures creuses",
+        "description": "Ajustez les plages d'heures creuses extraites de la courbe de charge. Par défaut de 22h00 à 06h00. Laissez la sélection vide pour continuer.",
+        "data": {
+          "intervals": "Plages horaires"
+        }
+      },
+      "rules": {
+        "title": "Ajouter une nouvelle plage horaire",
+        "description": "La plage horaire court de 00h00 à 23h59 par tranche de 30min\n Ex: 01:30:00 à 14:00:00",
+        "data": {
+          "rule_id": "Id",
+          "rule_start_time": "Heure de début",
+          "rule_end_time": "Heure de fin",
+          "rule_delete": "Effacer cette plage horaire"
         }
       }
     },
@@ -67,8 +84,8 @@
         "title": "Tarifs de l'abonnement",
         "description": "Saisissez le coût de chaque valeur de votre abonnement.",
         "data": {
-          "price": "Tarif heures pleines ou standard",
-          "off_price": "Tarif heures creuses",
+          "standard": "Tarif heures pleines ou standard",
+          "offpeak": "Tarif heures creuses",
           "s_blue": "BLEU : Tarif heures pleines",
           "s_white": "BLANC : Tarif heures pleines",
           "s_red": "ROUGE : Tarif heures pleines",
@@ -82,9 +99,7 @@
         "description": "Sélectionner le service de collecte:\nDaily: valeur journalière\nDetail: valeur heure par heure",
         "data": {
           "service": "Service",
-          "price": "Tarif de revente",
-          "daily": "Journalier",
-          "detail": "Détaillé"
+          "standard": "Tarif de revente"
         }
       },
       "consumption": {
@@ -99,11 +114,8 @@
           "o_white": "BLANC: Tarif heures creuses",
           "o_red": "ROUGE: Tarif heures creuses",
           "price": "Tarif heures pleines ou standard",
-          "off_price": "Tarif heures creuses",
-          "interval_new_id": "Ajouter plage d'heures creuses",
-          "daily": "Journalier",
-          "detail": "Détaillé",
-          "add_new_interval": "Ajouter une nouvelle plage"
+          "offpeak": "Tarif heures creuses",
+          "intervals": "Plages horaires"
         }
       },
       "rules": {
@@ -112,7 +124,6 @@
         "data": {
           "rule_id": "Id",
           "period_id": "Période",
-          "step_id": "Service",
           "rule_start_time": "Heure de début",
           "rule_end_time": "Heure de fin",
           "rule_delete": "Effacer cette plage horaire"
@@ -176,14 +187,23 @@
           "red": "Rouge"
         }
       },
+      "consumption_standard": {
+        "name": "Consommation"
+      },
       "consumption_full": {
         "name": "Consommation Heures pleines"
+      },
+      "consumption_standard_price": {
+        "name": "Tarif horaire"
       },
       "consumption_full_price": {
         "name": "Tarif Heures pleines"
       },
+      "consumption_standard_cost": {
+        "name": "Coût horaire"
+      },
       "consumption_full_cost": {
-        "name": "Cout Heures pleines"
+        "name": "Coût Heures pleines"
       },
       "consumption_offpeak": {
         "name": "Consommation Heures creuses"
@@ -192,7 +212,7 @@
         "name": "Tarif Heures creuses"
       },
       "consumption_offpeak_cost": {
-        "name": "Cout Heures creuses"
+        "name": "Coût Heures creuses"
       },
       "consumption_blue_price": {
         "name": "Tarif Bleu"
@@ -212,22 +232,11 @@
       "consumption_offpeak_red_price": {
         "name": "Tarif Rouge - Heures creuses"
       },
-      "consumption": {
-        "name": "Consommation",
-        "state": {
-          "daily": "Journalier",
-          "detail": "Détaillé"
-        }
-      },
       "consomption_cost": {
         "name": "Tarif de consommation"
       },
       "production": {
-        "name": "Production",
-        "state": {
-          "daily": "Journalier",
-          "detail": "Détaillé"
-        }
+        "name": "Production"
       },
       "production_price": {
         "name": "Tarif de revente"
@@ -236,7 +245,7 @@
         "name": "Bénéfice"
       },
       "last_api_call": {
-        "name": "Dernier appel API"
+        "name": "Dernière collecte"
       }
     }
   }

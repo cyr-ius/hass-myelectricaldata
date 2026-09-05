@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
-from typing import Final, Literal, override
+from typing import Final, override
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -15,16 +15,10 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
+from myelectricaldatapy import ATTR_INTERVALS, Subscription
 
 from . import MyElectricalDataConfigEntry
-from .const import (
-    CONF_CONSUMPTION,
-    CONF_HPHC,
-    CONF_INTERVALS,
-    CONF_RULE_END_TIME,
-    CONF_RULE_START_TIME,
-    CONF_STD,
-)
+from .const import CONF_CONSUMPTION, CONF_RULE_END_TIME, CONF_RULE_START_TIME
 from .coordinator import EnedisDataUpdateCoordinator
 from .entity import MyElectricalEntity
 
@@ -37,7 +31,7 @@ class MyElectricalBinarySensorEntityDescription(BinarySensorEntityDescription):
         [EnedisDataUpdateCoordinator, "MyElectricalBinarySensorEntityDescription"],
         BinarySensorEntity,
     ]
-    subscription: Literal["hphc", "tempo", "standard"] = CONF_STD
+    subscriptions: Subscription | None = None
 
 
 BINARY_SENSOR_TYPES: Final[tuple[MyElectricalBinarySensorEntityDescription, ...]] = (
@@ -56,7 +50,7 @@ BINARY_SENSOR_TYPES: Final[tuple[MyElectricalBinarySensorEntityDescription, ...]
         device_class=BinarySensorDeviceClass.POWER,
         entity_category=EntityCategory.DIAGNOSTIC,
         cls=lambda coordinator, description: OffpeakSensor(coordinator, description),
-        subscription=CONF_HPHC,
+        subscriptions=Subscription.HPHC | Subscription.TEMPO,
     ),
 )
 
@@ -68,7 +62,8 @@ def _is_applicable(
     """Return whether the binary sensor is relevant for the account's configuration."""
     if description.key == "access_token":
         return True
-    return description.subscription == coordinator.subscription
+
+    return coordinator.api.subscription in description.subscriptions
 
 
 async def async_setup_entry(
@@ -98,22 +93,23 @@ class CountdownSensor(MyElectricalEntity, BinarySensorEntity):
     def _fetch_state(self) -> bool:
         """Return True once the consent expiration date has been reached."""
         access = self.coordinator.api.access
-        expiration_date = dt_util.parse_datetime(
-            access.get("consent_expiration_date") or ""
-        )
+        expiration_date = dt_util.parse_datetime(access.consent_expiration_date or "")
         if expiration_date is None:
-            return access.get("valid", False) is False
+            return access.valid is False
         if expiration_date.tzinfo is None:
             expiration_date = dt_util.as_utc(expiration_date)
         return dt_util.now() >= expiration_date
 
     def _build_extra_state_attributes(self) -> dict:
         """Return extra state."""
-        return {
-            "Expiration date": self.coordinator.api.access.get(
-                "consent_expiration_date"
-            ),
-        }
+        access = self.coordinator.api.access
+        return (
+            {
+                "Expiration date": access.consent_expiration_date,
+            }
+            if access is not None
+            else {}
+        )
 
     @callback
     @override
@@ -139,7 +135,7 @@ class OffpeakSensor(MyElectricalEntity, BinarySensorEntity):
     def _get_offpeak_ranges(self) -> list[tuple[time, time]]:
         """Return the offpeak/tempo time ranges configured via the config flow."""
         intervals = self.coordinator.config_entry.options.get(CONF_CONSUMPTION, {}).get(
-            CONF_INTERVALS, {}
+            ATTR_INTERVALS, {}
         )
         return [
             (

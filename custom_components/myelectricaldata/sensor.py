@@ -1,9 +1,10 @@
 """Sensor for power energy."""
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Final, Literal, override
+from typing import Any, Final, override
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -16,34 +17,37 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
+from myelectricaldatapy import (
+    ATTR_OFFPEAK,
+    ATTR_PRICE,
+    ATTR_PRICES,
+    ATTR_STANDARD,
+    TEMPO_B,
+    TEMPO_DAYS,
+    TEMPO_R,
+    TEMPO_W,
+    Subscription,
+)
 
 from . import MyElectricalDataConfigEntry
 from .const import (
-    CONF_AUTH,
-    CONF_BLUE,
+    CONF_CONSUMPTION,
     CONF_GREEN,
-    CONF_HPHC,
     CONF_NA,
-    CONF_OFF_PRICE,
-    CONF_OFFPEAK,
     CONF_ORANGE,
-    CONF_PRICE,
-    CONF_PRICINGS,
     CONF_PRODUCTION,
     CONF_RED,
     CONF_SERVICE,
-    CONF_STD,
     CONF_SUMMARY,
-    CONF_TEMPO,
-    CONF_WHITE,
 )
 from .coordinator import EnedisDataUpdateCoordinator
 from .entity import MyElectricalEntity
 
-DAY_VALUES = {0: CONF_NA, 1: CONF_GREEN, 2: CONF_ORANGE, 3: CONF_RED}
-TEMPO_OPTIONS = [CONF_BLUE, CONF_WHITE, CONF_RED]
+DAY_VALUES = (CONF_NA, CONF_GREEN, CONF_ORANGE, CONF_RED)
+TEMPO_DAYS = list(TEMPO_DAYS)
 EUR = "EUR"
 EUR_PER_KWH = "EUR/kWh"
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -54,32 +58,46 @@ class MyElectricalSensorEntityDescription(SensorEntityDescription):
         [EnedisDataUpdateCoordinator, "MyElectricalSensorEntityDescription"],
         SensorEntity,
     ]
-    subscription: Literal["hphc", "tempo", "standard"] = CONF_STD
+    subscriptions: Subscription | None = None
     requires_production: bool = False
     value_fn: Callable[[dict[str, Any]], float] | None = None
 
 
 SENSOR_TYPES: Final[tuple[MyElectricalSensorEntityDescription, ...]] = (
     MyElectricalSensorEntityDescription(
-        key="consomption",
-        name="Consomption",
-        translation_key="consomption",
+        key="consumption_standard",
+        name="Consumption",
+        translation_key="consumption_standard",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         cls=lambda coordinator, description: PowerSensor(coordinator, description),
+        subscriptions=Subscription.STANDARD,
     ),
     MyElectricalSensorEntityDescription(
-        key="consomption_cost",
-        name="Consomption Cost",
-        translation_key="consomption_cost",
+        key="consumption_standard_cost",
+        name="Consumption Cost",
+        translation_key="consumption_standard_cost",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=EUR,
         cls=lambda coordinator, description: PowerSensor(coordinator, description),
+        subscriptions=Subscription.STANDARD,
     ),
     MyElectricalSensorEntityDescription(
-        key="production",
+        key="consumption_standard_price",
+        name="Consumption Price",
+        translation_key="consumption_standard_price",
+        native_unit_of_measurement=EUR_PER_KWH,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        cls=lambda coordinator, description: PriceSensor(coordinator, description),
+        value_fn=lambda options: options[CONF_CONSUMPTION][ATTR_PRICES][ATTR_STANDARD][
+            ATTR_PRICE
+        ],
+        subscriptions=Subscription.STANDARD,
+    ),
+    MyElectricalSensorEntityDescription(
+        key="production_standard",
         name="Production",
         translation_key="production",
         device_class=SensorDeviceClass.ENERGY,
@@ -89,7 +107,7 @@ SENSOR_TYPES: Final[tuple[MyElectricalSensorEntityDescription, ...]] = (
         requires_production=True,
     ),
     MyElectricalSensorEntityDescription(
-        key="production_cost",
+        key="production_standard_cost",
         name="Production Cost",
         translation_key="production_cost",
         device_class=SensorDeviceClass.MONETARY,
@@ -99,24 +117,48 @@ SENSOR_TYPES: Final[tuple[MyElectricalSensorEntityDescription, ...]] = (
         requires_production=True,
     ),
     MyElectricalSensorEntityDescription(
+        key="production_standard_price",
+        name="Production Price",
+        translation_key="production_price",
+        native_unit_of_measurement=EUR_PER_KWH,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        cls=lambda coordinator, description: PriceSensor(coordinator, description),
+        requires_production=True,
+        value_fn=lambda options: options[CONF_PRODUCTION][ATTR_PRICES][ATTR_STANDARD][
+            ATTR_PRICE
+        ],
+    ),
+    MyElectricalSensorEntityDescription(
         key="consumption_full",
-        name="Consumption Full",
+        name="Consumption",
         translation_key="consumption_full",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         cls=lambda coordinator, description: PowerSensor(coordinator, description),
-        subscription=CONF_HPHC,
+        subscriptions=Subscription.HPHC | Subscription.TEMPO,
     ),
     MyElectricalSensorEntityDescription(
         key="consumption_full_cost",
-        name="Consumption Full Cost",
+        name="Consumption Cost",
         translation_key="consumption_full_cost",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=EUR,
         cls=lambda coordinator, description: PowerSensor(coordinator, description),
-        subscription=CONF_HPHC,
+        subscriptions=Subscription.HPHC | Subscription.TEMPO,
+    ),
+    MyElectricalSensorEntityDescription(
+        key="consumption_full_price",
+        name="Consumption Price",
+        translation_key="consumption_full_price",
+        native_unit_of_measurement=EUR_PER_KWH,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        cls=lambda coordinator, description: PriceSensor(coordinator, description),
+        value_fn=lambda options: options[CONF_CONSUMPTION][ATTR_PRICES][ATTR_STANDARD][
+            ATTR_PRICE
+        ],
+        subscriptions=Subscription.HPHC,
     ),
     MyElectricalSensorEntityDescription(
         key="consumption_offpeak",
@@ -126,7 +168,7 @@ SENSOR_TYPES: Final[tuple[MyElectricalSensorEntityDescription, ...]] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         cls=lambda coordinator, description: PowerSensor(coordinator, description),
-        subscription=CONF_HPHC,
+        subscriptions=Subscription.HPHC | Subscription.TEMPO,
     ),
     MyElectricalSensorEntityDescription(
         key="consumption_offpeak_cost",
@@ -136,26 +178,7 @@ SENSOR_TYPES: Final[tuple[MyElectricalSensorEntityDescription, ...]] = (
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=EUR,
         cls=lambda coordinator, description: PowerSensor(coordinator, description),
-        subscription=CONF_HPHC,
-    ),
-    MyElectricalSensorEntityDescription(
-        key="consumption_price",
-        name="Consumption Price",
-        translation_key="consumption_price",
-        native_unit_of_measurement=EUR_PER_KWH,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        cls=lambda coordinator, description: PriceSensor(coordinator, description),
-        value_fn=lambda options: options[CONF_AUTH][CONF_PRICE],
-    ),
-    MyElectricalSensorEntityDescription(
-        key="consumption_full_price",
-        name="Consumption Full Price",
-        translation_key="consumption_full_price",
-        native_unit_of_measurement=EUR_PER_KWH,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        cls=lambda coordinator, description: PriceSensor(coordinator, description),
-        subscription=CONF_HPHC,
-        value_fn=lambda options: options[CONF_AUTH][CONF_PRICE],
+        subscriptions=Subscription.HPHC | Subscription.TEMPO,
     ),
     MyElectricalSensorEntityDescription(
         key="consumption_offpeak_price",
@@ -164,40 +187,46 @@ SENSOR_TYPES: Final[tuple[MyElectricalSensorEntityDescription, ...]] = (
         native_unit_of_measurement=EUR_PER_KWH,
         entity_category=EntityCategory.DIAGNOSTIC,
         cls=lambda coordinator, description: PriceSensor(coordinator, description),
-        subscription=CONF_HPHC,
-        value_fn=lambda options: options[CONF_AUTH][CONF_OFF_PRICE],
+        value_fn=lambda options: options[CONF_CONSUMPTION][ATTR_PRICES][ATTR_OFFPEAK][
+            ATTR_PRICE
+        ],
+        subscriptions=Subscription.HPHC,
     ),
     MyElectricalSensorEntityDescription(
         key="consumption_blue_price",
         name="Consumption Blue Price",
-        translation_key="consumption_standard_blue_price",
+        translation_key="consumption_blue_price",
         native_unit_of_measurement=EUR_PER_KWH,
         entity_category=EntityCategory.DIAGNOSTIC,
         cls=lambda coordinator, description: PriceSensor(coordinator, description),
-        subscription=CONF_TEMPO,
-        value_fn=lambda options: options[CONF_AUTH][CONF_PRICINGS][CONF_STD][CONF_BLUE],
+        subscriptions=Subscription.TEMPO,
+        value_fn=lambda options: options[CONF_CONSUMPTION][ATTR_PRICES][ATTR_STANDARD][
+            TEMPO_B
+        ],
     ),
     MyElectricalSensorEntityDescription(
         key="consumption_white_price",
         name="Consumption White Price",
-        translation_key="consumption_standard_white_price",
+        translation_key="consumption_white_price",
         native_unit_of_measurement=EUR_PER_KWH,
         entity_category=EntityCategory.DIAGNOSTIC,
         cls=lambda coordinator, description: PriceSensor(coordinator, description),
-        subscription=CONF_TEMPO,
-        value_fn=lambda options: options[CONF_AUTH][CONF_PRICINGS][CONF_STD][
-            CONF_WHITE
+        subscriptions=Subscription.TEMPO,
+        value_fn=lambda options: options[CONF_CONSUMPTION][ATTR_PRICES][ATTR_STANDARD][
+            TEMPO_W
         ],
     ),
     MyElectricalSensorEntityDescription(
         key="consumption_red_price",
         name="Consumption Red Price",
-        translation_key="consumption_standard_red_price",
+        translation_key="consumption_red_price",
         native_unit_of_measurement=EUR_PER_KWH,
         entity_category=EntityCategory.DIAGNOSTIC,
         cls=lambda coordinator, description: PriceSensor(coordinator, description),
-        subscription=CONF_TEMPO,
-        value_fn=lambda options: options[CONF_AUTH][CONF_PRICINGS][CONF_STD][CONF_RED],
+        subscriptions=Subscription.TEMPO,
+        value_fn=lambda options: options[CONF_CONSUMPTION][ATTR_PRICES][ATTR_STANDARD][
+            TEMPO_R
+        ],
     ),
     MyElectricalSensorEntityDescription(
         key="consumption_offpeak_blue_price",
@@ -206,9 +235,9 @@ SENSOR_TYPES: Final[tuple[MyElectricalSensorEntityDescription, ...]] = (
         native_unit_of_measurement=EUR_PER_KWH,
         entity_category=EntityCategory.DIAGNOSTIC,
         cls=lambda coordinator, description: PriceSensor(coordinator, description),
-        subscription=CONF_TEMPO,
-        value_fn=lambda options: options[CONF_AUTH][CONF_PRICINGS][CONF_OFFPEAK][
-            CONF_BLUE
+        subscriptions=Subscription.TEMPO,
+        value_fn=lambda options: options[CONF_CONSUMPTION][ATTR_PRICES][ATTR_OFFPEAK][
+            TEMPO_B
         ],
     ),
     MyElectricalSensorEntityDescription(
@@ -218,9 +247,9 @@ SENSOR_TYPES: Final[tuple[MyElectricalSensorEntityDescription, ...]] = (
         native_unit_of_measurement=EUR_PER_KWH,
         entity_category=EntityCategory.DIAGNOSTIC,
         cls=lambda coordinator, description: PriceSensor(coordinator, description),
-        subscription=CONF_TEMPO,
-        value_fn=lambda options: options[CONF_AUTH][CONF_PRICINGS][CONF_OFFPEAK][
-            CONF_WHITE
+        subscriptions=Subscription.TEMPO,
+        value_fn=lambda options: options[CONF_CONSUMPTION][ATTR_PRICES][ATTR_OFFPEAK][
+            TEMPO_W
         ],
     ),
     MyElectricalSensorEntityDescription(
@@ -230,20 +259,10 @@ SENSOR_TYPES: Final[tuple[MyElectricalSensorEntityDescription, ...]] = (
         native_unit_of_measurement=EUR_PER_KWH,
         entity_category=EntityCategory.DIAGNOSTIC,
         cls=lambda coordinator, description: PriceSensor(coordinator, description),
-        subscription=CONF_TEMPO,
-        value_fn=lambda options: options[CONF_AUTH][CONF_PRICINGS][CONF_OFFPEAK][
-            CONF_RED
+        subscriptions=Subscription.TEMPO,
+        value_fn=lambda options: options[CONF_CONSUMPTION][ATTR_PRICES][ATTR_OFFPEAK][
+            TEMPO_R
         ],
-    ),
-    MyElectricalSensorEntityDescription(
-        key="production_price",
-        name="Production Price",
-        translation_key="production_price",
-        native_unit_of_measurement=EUR_PER_KWH,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        cls=lambda coordinator, description: PriceSensor(coordinator, description),
-        requires_production=True,
-        value_fn=lambda options: options[CONF_PRODUCTION][CONF_PRICE],
     ),
     MyElectricalSensorEntityDescription(
         key="tempo",
@@ -251,9 +270,9 @@ SENSOR_TYPES: Final[tuple[MyElectricalSensorEntityDescription, ...]] = (
         translation_key="tempo",
         device_class=SensorDeviceClass.ENUM,
         native_unit_of_measurement=None,
-        options=TEMPO_OPTIONS,
+        options=TEMPO_DAYS,
         cls=lambda coordinator, description: TempoSensor(coordinator, description),
-        subscription=CONF_TEMPO,
+        subscriptions=Subscription.TEMPO,
     ),
     MyElectricalSensorEntityDescription(
         key="ecowatt",
@@ -281,15 +300,26 @@ def _is_applicable(
     coordinator: EnedisDataUpdateCoordinator,
 ) -> bool:
     """Return whether the sensor is relevant for the account's configuration."""
+    options = coordinator.config_entry.options
+    api = coordinator.api
+
+    # Ecowatt is a standalone signal, gated only on its own subscription.
     if description.key == "ecowatt":
-        return coordinator.api._ecowatt_subs  # noqa: SLF001
-    if description.key == "last_api_call":
-        return True
+        return api.has_ecowatt_subscription
+
+    # Production sensors exist only once a production service is configured.
     if description.requires_production:
-        return bool(
-            coordinator.config_entry.options.get(CONF_PRODUCTION, {}).get(CONF_SERVICE)
-        )
-    return description.subscription == coordinator.subscription
+        return bool(options.get(CONF_PRODUCTION, {}).get(CONF_SERVICE))
+
+    # Sensors with no subscription constraint always apply (e.g. last_api_call).
+    if description.subscriptions is None:
+        return True
+
+    # HP/HC and Tempo are pinned to the load curve by the config flow, so the
+    # subscription type alone decides which consumption sensors are relevant.
+    applicable = api.subscription in description.subscriptions
+    _LOGGER.debug("Sensor: %s, is_applicable: %s", description.key, applicable)
+    return applicable
 
 
 async def async_setup_entry(
@@ -317,25 +347,30 @@ class PowerSensor(MyElectricalEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, description)
         self._attr_extra_state_attributes = self._build_extra_state_attributes()
-        self._attr_native_value = self.coordinator.data[self.unique_id][CONF_SUMMARY]
+        self._attr_native_value = self.coordinator.data.get(self.unique_id, {}).get(
+            CONF_SUMMARY
+        )
 
     def _build_extra_state_attributes(self) -> dict:
         """Return extra state."""
-        return {
-            "offpeak hours": self.coordinator.api.contract.get("offpeak_hours"),
-            "last activation date": self.coordinator.api.contract.get(
-                "last_activation_date"
-            ),
-            "last tariff changedate": self.coordinator.api.contract.get(
-                "last_distribution_tariff_change_date"
-            ),
-        }
+        contract = self.coordinator.api.contract
+        return (
+            {
+                "offpeak hours": contract.offpeak_hours,
+                "last activation date": contract.last_activation_date,
+                "last tariff changedate": contract.last_distribution_tariff_change_date,
+            }
+            if contract is not None
+            else {}
+        )
 
     @callback
     @override
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        self._attr_native_value = self.coordinator.data[self.unique_id][CONF_SUMMARY]
+        self._attr_native_value = self.coordinator.data.get(self.unique_id, {}).get(
+            CONF_SUMMARY
+        )
         super()._handle_coordinator_update()
 
 
@@ -358,13 +393,16 @@ class TempoSensor(MyElectricalEntity, SensorEntity):
     def __init__(self, coordinator, description) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, description)
-        self._attr_native_value = coordinator.api.tempo_day
+        self._attr_native_value = coordinator.api.tempo
+        self._attr_extra_state_attributes = {"next": coordinator.api.tempo_next}
 
     @callback
     @override
     def _handle_coordinator_update(self) -> None:
         """Return the current tempo day."""
-        self._attr_native_value = self.coordinator.api.tempo_day
+        self._attr_native_value = self.coordinator.api.tempo
+        self._attr_extra_state_attributes = {"next": self.coordinator.api.tempo_next}
+
         super()._handle_coordinator_update()
 
 
@@ -387,12 +425,17 @@ class LastApiCallSensor(MyElectricalEntity, SensorEntity):
     def _build_extra_state_attributes(self) -> dict:
         """Return extra state."""
         access = self.coordinator.api.access
-        return {
-            "Call number": access.get("call_number"),
-            "Banned": access.get("ban"),
-            "Quota": access.get("quota_limit"),
-            "Quota reached": access.get("quota_reached"),
-        }
+        return (
+            {
+                "Call number": access.call_number,
+                "Banned": access.ban,
+                "Quota": access.quota_limit,
+                "Quota reached": access.quota_reached,
+                "Last access": self.coordinator.api.last_access,
+            }
+            if access is not None
+            else {}
+        )
 
     @callback
     @override
@@ -411,20 +454,38 @@ class EcoWattSensor(MyElectricalEntity, SensorEntity):
         super().__init__(coordinator, description)
         self._attr_extra_state_attributes = self._build_extra_state_attributes()
 
+        idx_ecowatt = (
+            self.coordinator.api.ecowatt_day.value
+            if self.coordinator.api.ecowatt_day is not None
+            else 0
+        )
+        self._attr_native_value = DAY_VALUES[idx_ecowatt]
+
     def _build_extra_state_attributes(self) -> dict:
         """Return extra state."""
-        return {
-            "message": self.coordinator.api.ecowatt_day.get("message"),
-            "start_date": self.coordinator.api.ecowatt.get("start_date"),
-            "end_date": self.coordinator.api.ecowatt.get("end_date"),
-        }
+        ecowatt_day = self.coordinator.api.ecowatt_day
+        return (
+            {
+                "message": ecowatt_day.message,
+                # "start_date": ecowatt.start_date,
+                # "end_date":ecowatt.end_date,
+            }
+            if ecowatt_day is not None
+            else {}
+        )
 
     @callback
     @override
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        self._attr_native_value = DAY_VALUES[
-            self.coordinator.api.ecowatt_day.get("value", 0)
-        ]
+
+        idx_ecowatt = (
+            self.coordinator.api.ecowatt_day.value
+            if self.coordinator.api.ecowatt_day is not None
+            else 0
+        )
+
+        self._attr_native_value = DAY_VALUES[idx_ecowatt]
+
         self._attr_extra_state_attributes = self._build_extra_state_attributes()
         super()._handle_coordinator_update()
