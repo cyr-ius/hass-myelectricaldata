@@ -160,6 +160,14 @@
       "options": {
         "rule_new_id": "Ajouter une nouvelle plage"
       }
+    },
+    "services_choice": {
+      "options": {
+        "daily_consumption": "Consommation quotidienne",
+        "consumption_load_curve": "Courbe de charge de consommation",
+        "daily_production": "Production quotidienne",
+        "production_load_curve": "Courbe de charge de production"
+      }
     }
   },
   "entity": {
@@ -246,6 +254,66 @@
       },
       "last_api_call": {
         "name": "Dernière collecte"
+      }
+    }
+  },
+  "services": {
+    "fetch_data": {
+      "name": "Récupérer les données",
+      "description": "Récupère et ajoute les données dans la base de statistiques",
+      "fields": {
+        "entry": {
+          "name": "Entrée",
+          "description": "Sélectionnez le PDL pour lequel récupérer les données"
+        },
+        "service": {
+          "name": "Service",
+          "description": "Sélectionnez le service pour lequel récupérer les données"
+        },
+        "start_date": {
+          "name": "Date de début",
+          "description": "Sélectionnez la date de début de récupération des données"
+        },
+        "end_date": {
+          "name": "Date de fin",
+          "description": "Sélectionnez la date de fin de récupération des données"
+        },
+        "price": {
+          "name": "Tarif",
+          "description": "Sélectionnez le tarif à utiliser pour récupérer les données"
+        },
+        "off_price": {
+          "name": "Tarif heures creuses",
+          "description": "Sélectionnez le tarif heures creuses à utiliser pour récupérer les données"
+        }
+      }
+    },
+    "clear_data": {
+      "name": "Effacer les données",
+      "description": "Efface les données de l'API Enedis",
+      "fields": {
+        "statistic_id": {
+          "name": "Id de statistique",
+          "description": "Sélectionnez la statistique dont les données doivent être effacées"
+        },
+        "start_date": {
+          "name": "Date de début",
+          "description": "Sélectionnez la date de début d'effacement des données"
+        },
+        "end_date": {
+          "name": "Date de fin",
+          "description": "Sélectionnez la date de fin d'effacement des données"
+        }
+      }
+    },
+    "rebuild_data": {
+      "name": "Reconstruire les données",
+      "description": "Reconstruit les données à partir de l'API Enedis",
+      "fields": {
+        "statistic_id": {
+          "name": "Id de statistique",
+          "description": "Sélectionnez la statistique dont les données doivent être reconstruites"
+        }
       }
     }
   }

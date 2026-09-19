@@ -158,6 +158,14 @@
       "options": {
         "rule_new_id": "Add new interval"
       }
+    },
+    "services_choice": {
+      "options": {
+        "daily_consumption": "Daily Consumption",
+        "consumption_load_curve": "Consumption Load Curve",
+        "daily_production": "Daily Production",
+        "production_load_curve": "Production Load Curve"
+      }
     }
   },
   "entity": {
@@ -175,6 +183,66 @@
           "green": "Green",
           "orange": "Orange",
           "red": "Red"
+        }
+      }
+    }
+  },
+  "services": {
+    "fetch_data": {
+      "name": "Fetch data",
+      "description": "Fetch and add data in statistics database",
+      "fields": {
+        "entry": {
+          "name": "Entry",
+          "description": "Select PDL to fetch data from"
+        },
+        "service": {
+          "name": "Service",
+          "description": "Select service to fetch data from"
+        },
+        "start_date": {
+          "name": "Start date",
+          "description": "Select start date to fetch data from"
+        },
+        "end_date": {
+          "name": "End date",
+          "description": "Select end date to fetch data from"
+        },
+        "price": {
+          "name": "Price",
+          "description": "Select price to fetch data from"
+        },
+        "off_price": {
+          "name": "Offpeak price",
+          "description": "Select offpeak price to fetch data from"
+        }
+      }
+    },
+    "clear_data": {
+      "name": "Clear data",
+      "description": "Clear data from Enedis API",
+      "fields": {
+        "statistic_id": {
+          "name": "Statistic Id",
+          "description": "Select statistic to clear data from"
+        },
+        "start_date": {
+          "name": "Start date",
+          "description": "Select start date to clear data from"
+        },
+        "end_date": {
+          "name": "End date",
+          "description": "Select end date to clear data from"
+        }
+      }
+    },
+    "rebuild_data": {
+      "name": "Rebuild data",
+      "description": "Rebuild data from Enedis API",
+      "fields": {
+        "statistic_id": {
+          "name": "Statistic Id",
+          "description": "Select statistic to rebuild data from"
         }
       }
     }

@@ -1,22 +1,20 @@
 # Enedis service.
 fetch_data:
   name: Fetch data
-  description: Fetch and add data in statistics database
   fields:
     entry:
       name: Entry
-      description: PDL entity
       required: true
       selector:
         config_entry:
           integration: myelectricaldata
     service:
       name: Service
-      description: Type of data to retrieve
       required: true
       default: daily_production
       selector:
         select:
+          translation_key: "services_choice"
           mode: dropdown
           options:
             - label: Daily Consumption
@@ -29,19 +27,16 @@ fetch_data:
               value: production_load_curve
     start_date:
       name: Start Date
-      description: Recovery start date
       required: true
       selector:
         datetime:
     end_date:
       name: End Date
-      description: Recovery end date
       required: true
       selector:
         datetime:
     price:
       name: Price
-      description: Price
       required: false
       selector:
         number:
@@ -51,7 +46,6 @@ fetch_data:
           mode: box
     off_price:
       name: Offpeak Price
-      description: Offpeak Price (Only if detailed mode)
       required: false
       selector:
         number:
