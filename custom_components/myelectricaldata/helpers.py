@@ -116,7 +116,12 @@ def build_sensor_items(
 
     items: list[dict[str, Any]] = []
     for note in notes:
-        suffix = "full" if is_detail and note == ATTR_STANDARD else ATTR_OFFPEAK
+        if not is_detail:
+            suffix = ATTR_STANDARD
+        elif note == ATTR_STANDARD:
+            suffix = "full"
+        else:
+            suffix = ATTR_OFFPEAK
         unique_id = f"{pdl}_{mode}_{suffix}"
         items.append(
             {
