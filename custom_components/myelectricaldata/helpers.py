@@ -551,8 +551,9 @@ def next_date(date_: dt | None, service: str) -> dt:
         return date_ + timedelta(hours=1)
     if date_:
         return date_ + timedelta(days=1)
+    # The library ends the range at now + 1 day and the API caps it at 1095 days.
     return (
-        dt_util.now().replace(tzinfo=None) - timedelta(days=1095)
+        dt_util.now().replace(tzinfo=None) - timedelta(days=1094)
         if service in [DAILY_PROD, DAILY_CONSUM]
         else dt_util.now().replace(tzinfo=None) - timedelta(days=7)
     )
