@@ -18,8 +18,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 from myelectricaldatapy import (
     ATTR_INTERVALS,
-    DETAIL_CONSUM,
-    DETAIL_PROD,
     EnedisByPDL,
     EnedisException,
     LimitReached,
@@ -259,14 +257,15 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 # The API only ever publishes up to yesterday's data, so a
                 # start date of today or later can never return anything:
                 # skip the call instead of retrying it every SCAN_INTERVAL.
-                end = None
-                if service in [DETAIL_CONSUM, DETAIL_PROD]:
-                    end = collect_start + timedelta(days=7)
-
+                # end is left at None (up to now) even for detail services:
+                # the library's _async_get_details already paginates a wide
+                # range into its own 7-day sub-requests, so a catch-up gap
+                # is closed in this single refresh instead of one 7-day
+                # chunk per SCAN_INTERVAL.
                 self.api.set_data_fetch(
                     service=service,
                     start=collect_start,
-                    end=end,
+                    end=None,
                     intervals=intervals,
                     prices=prices,
                     cum_value=cum_values,
