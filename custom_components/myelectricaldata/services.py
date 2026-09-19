@@ -18,7 +18,7 @@ from myelectricaldatapy import (
     DAILY_CONSUM,
     DETAIL_CONSUM,
     EnedisByPDL,
-    Service,
+    EnergyCollect,
 )
 
 from .const import (
@@ -79,7 +79,7 @@ async def async_services(hass: HomeAssistant):
         entry = hass.config_entries.async_get_entry(call.data[CONF_ENTRY])
         if entry is None:
             raise ServiceValidationError("Config entry not found")
-        service: Service = call.data[CONF_SERVICE]
+        service: EnergyCollect = call.data[CONF_SERVICE]
         options = entry.options
         pdl = entry.data[CONF_PDL]
         start_date = call.data[CONF_START_DATE]

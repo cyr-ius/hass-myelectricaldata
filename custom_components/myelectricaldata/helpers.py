@@ -1,6 +1,7 @@
 """Helpers functions for MyElectricalData."""
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime as dt
 from datetime import timedelta
@@ -167,7 +168,11 @@ def build_sensor_items(
 
 
 def read_prices(
-    options: dict[str, Any], mode: str, service: str, intervals: list[Any], tempo: bool
+    options: Mapping[str, Any],
+    mode: str,
+    service: str,
+    intervals: list[Any],
+    tempo: bool,
 ) -> dict[str, Any]:
     """Return the tariff(s) configured via the config/options flow, by bucket.
 
