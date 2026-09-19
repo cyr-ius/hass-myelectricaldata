@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
+from homeassistant.util import slugify
 from myelectricaldatapy import (
     ATTR_OFFPEAK,
     ATTR_PRICE,
@@ -39,6 +40,7 @@ from .const import (
     CONF_RED,
     CONF_SERVICE,
     CONF_SUMMARY,
+    DOMAIN,
 )
 from .coordinator import EnedisDataUpdateCoordinator
 from .entity import MyElectricalEntity
@@ -350,6 +352,12 @@ class PowerSensor(MyElectricalEntity, SensorEntity):
         self._attr_native_value = self.coordinator.data.get(self.unique_id, {}).get(
             CONF_SUMMARY
         )
+
+    @property
+    @override
+    def suggested_object_id(self) -> str:
+        """Match the statistic_id imports onto before the entity exists."""
+        return slugify(f"{DOMAIN}_{self.unique_id}")
 
     def _build_extra_state_attributes(self) -> dict:
         """Return extra state."""

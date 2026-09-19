@@ -153,7 +153,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             statistic_ids.update(
                 item[CONF_ENTITY_ID]
                 for item in build_sensor_items(
-                    mode, self.pdl, service, intervals, has_price=True
+                    self.hass, mode, self.pdl, service, intervals, has_price=True
                 )
             )
         return statistic_ids
@@ -244,7 +244,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 tempo=self.api.has_tempo_subscription and mode == CONF_CONSUMPTION,
             )
             mode_items = build_sensor_items(
-                mode, self.pdl, service, intervals, has_price=bool(prices)
+                self.hass, mode, self.pdl, service, intervals, has_price=bool(prices)
             )
             if not self._migrated_legacy_stats:
                 await async_migrate_legacy_statistics(self.hass, mode_items)

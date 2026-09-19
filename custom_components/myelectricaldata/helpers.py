@@ -22,6 +22,7 @@ from homeassistant.components.recorder.tasks import RecorderTask
 from homeassistant.components.recorder.util import session_scope
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 from homeassistant.util.unit_conversion import EnergyConverter
@@ -94,8 +95,26 @@ async def async_get_last_infos(
     return _dt_last, sum_values, sum_prices
 
 
+def sensor_entity_id(hass: HomeAssistant, unique_id: str) -> str:
+    """Return the entity_id statistics must be attached to.
+
+    The registered entity wins (its entity_id may have been generated from a
+    translated name or renamed by the user); the slug of the unique_id is only
+    a fallback for an entity not created yet.
+    """
+    return (
+        er.async_get(hass).async_get_entity_id("sensor", DOMAIN, unique_id)
+        or f"sensor.{slugify(f'{DOMAIN}_{unique_id}')}"
+    )
+
+
 def build_sensor_items(
-    mode: str, pdl: str, service: str, intervals: list[Any], has_price: bool
+    hass: HomeAssistant,
+    mode: str,
+    pdl: str,
+    service: str,
+    intervals: list[Any],
+    has_price: bool,
 ) -> list[dict[str, Any]]:
     """Return one sensor descriptor per tariff bucket actually collected.
 
@@ -109,9 +128,7 @@ def build_sensor_items(
     """
     is_detail = service in (DETAIL_CONSUM, DETAIL_PROD)
     notes = (
-        [ATTR_STANDARD, ATTR_OFFPEAK]
-        if is_detail and intervals
-        else [ATTR_STANDARD]
+        [ATTR_STANDARD, ATTR_OFFPEAK] if is_detail and intervals else [ATTR_STANDARD]
     )
 
     items: list[dict[str, Any]] = []
@@ -126,7 +143,7 @@ def build_sensor_items(
         items.append(
             {
                 "unique_id": unique_id,
-                "entity_id": f"sensor.{slugify(f'{DOMAIN}_{unique_id}')}",
+                "entity_id": sensor_entity_id(hass, unique_id),
                 "note": note,
                 "mode": mode,
                 "kind": "energy",
@@ -138,7 +155,7 @@ def build_sensor_items(
             items.append(
                 {
                     "unique_id": cost_unique_id,
-                    "entity_id": f"sensor.{slugify(f'{DOMAIN}_{cost_unique_id}')}",
+                    "entity_id": sensor_entity_id(hass, cost_unique_id),
                     "note": note,
                     "mode": mode,
                     "kind": "cost",

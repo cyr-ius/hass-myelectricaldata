@@ -112,7 +112,7 @@ async def async_services(hass: HomeAssistant):
 
         # Get sensor items for this mode/service
         items = build_sensor_items(
-            mode, pdl, service, intervals, has_price=bool(prices)
+            hass, mode, pdl, service, intervals, has_price=bool(prices)
         )
 
         api = EnedisByPDL(
@@ -138,7 +138,7 @@ async def async_services(hass: HomeAssistant):
         )
 
         # Update data
-        await api.async_update_collects()
+        await api.async_update()
         # Import statistics onto their own sensor entity, then rebuild the
         # cumulative sum from scratch so a chunk imported out of order (e.g.
         # backfilling several date ranges over several days to stay under
