@@ -1,6 +1,7 @@
 """Helpers functions for MyElectricalData."""
 
 import logging
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime as dt
@@ -42,6 +43,8 @@ from sqlalchemy import delete
 from .const import (
     CONF_CONSUMPTION,
     CONF_PRODUCTION,
+    CONF_RULE_END_TIME,
+    CONF_RULE_START_TIME,
     DEFAULT_CC_PRICE,
     DEFAULT_CONSUMPTION_TEMPO,
     DEFAULT_PC_PRICE,
@@ -578,4 +581,38 @@ def next_date(date_: dt | None, service: str) -> dt:
         dt_util.now().replace(tzinfo=None) - timedelta(days=1094)
         if service in [DAILY_PROD, DAILY_CONSUM]
         else dt_util.now().replace(tzinfo=None) - timedelta(days=7)
+    )
+
+
+def normalize_offpeak(value: str) -> str:
+    """Convert an Enedis offpeak bound like '22H30' to 'HH:MM:SS'."""
+    hour, _, minute = value.upper().partition("H")
+    return f"{int(hour):02d}:{int(minute or 0):02d}:00"
+
+
+def parse_offpeak_hours(offpeak_hours: str | None) -> dict[str, dict[str, str]]:
+    """Return the id -> window map described by a contract's offpeak hours.
+
+    The contract exposes them as a free-form string such as
+    ``HC (22H00-6H00)`` or ``HC (1H30-7H30;12H30-14H30)``.
+    """
+    if not offpeak_hours:
+        return {}
+    return {
+        str(idx): {
+            CONF_RULE_START_TIME: normalize_offpeak(start),
+            CONF_RULE_END_TIME: normalize_offpeak(end),
+        }
+        for idx, (start, end) in enumerate(
+            re.findall(r"(\d{1,2}H\d{0,2})-(\d{1,2}H\d{0,2})", offpeak_hours.upper()),
+            start=1,
+        )
+    }
+
+
+def format_offpeak(intervals: Mapping[str, Mapping[str, str]]) -> str:
+    """Return the windows as a readable string, e.g. '22:00-06:00, 12:30-14:30'."""
+    return ", ".join(
+        f"{v[CONF_RULE_START_TIME][:5]}-{v[CONF_RULE_END_TIME][:5]}"
+        for v in intervals.values()
     )

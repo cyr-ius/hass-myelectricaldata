@@ -5,6 +5,7 @@ from myelectricaldatapy import ATTR_INTERVALS, ATTR_OFFPEAK, ATTR_PRICES, ATTR_S
 
 CLEAR_SERVICE = "clear_data"
 CONF_AUTH = "authentication"
+CONF_AUTO_OFFPEAK = "auto_offpeak"
 CONF_CONSUMPTION = "consumption"
 CONF_ECOWATT = "ecowatt"
 CONF_END_DATE = "end_date"
@@ -34,6 +35,8 @@ DEFAULT_HP_PRICE = 0.1841
 DEFAULT_PC_PRICE = 0.06
 DOMAIN = "myelectricaldata"
 FETCH_SERVICE = "fetch_data"
+ISSUE_OFFPEAK_MISMATCH = "offpeak_mismatch"
+ISSUE_OFFPEAK_UPDATED = "offpeak_updated"
 MANUFACTURER = "Enedis"
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
 PRODUCTION_DAILY = "daily_production"

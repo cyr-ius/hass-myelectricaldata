@@ -44,6 +44,7 @@ from custom_components.myelectricaldata.helpers import (
     async_rebuild_statistics,
     build_sensor_items,
     next_date,
+    parse_offpeak_hours,
     read_prices,
 )
 
@@ -434,3 +435,26 @@ def test_legacy_statistic_id_shape(kind, suffix):
     legacy_id = _legacy_statistic_id(item)
     assert legacy_id.startswith(f"{DOMAIN}:")
     assert legacy_id.endswith(suffix or "standard")
+
+
+# ---------------------------------------------------------------------------
+# parse_offpeak_hours
+# ---------------------------------------------------------------------------
+
+
+def test_parse_offpeak_hours_single_window():
+    assert parse_offpeak_hours("HC (22H00-6H00)") == {
+        "1": {"rule_start_time": "22:00:00", "rule_end_time": "06:00:00"}
+    }
+
+
+def test_parse_offpeak_hours_multiple_windows():
+    assert parse_offpeak_hours("HC (1H30-7H30;12H30-14H30)") == {
+        "1": {"rule_start_time": "01:30:00", "rule_end_time": "07:30:00"},
+        "2": {"rule_start_time": "12:30:00", "rule_end_time": "14:30:00"},
+    }
+
+
+@pytest.mark.parametrize("value", [None, "", "HC"])
+def test_parse_offpeak_hours_empty(value):
+    assert parse_offpeak_hours(value) == {}

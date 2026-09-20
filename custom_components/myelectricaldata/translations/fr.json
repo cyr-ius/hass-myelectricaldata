@@ -37,8 +37,9 @@
       },
       "intervals": {
         "title": "Plages heures creuses",
-        "description": "Ajustez les plages d'heures creuses extraites de la courbe de charge. Par défaut de 22h00 à 06h00. Laissez la sélection vide pour continuer.",
+        "description": "Ajustez les plages d'heures creuses extraites de la courbe de charge. Elles sont lues sur votre contrat (22h00 à 06h00 si indisponible). Enedis pouvant les modifier au cours de l'année, activez le mode automatique pour les maintenir à jour. Les modifications manuelles sont écrasées tant qu'il est activé. Laissez la sélection vide pour continuer.",
         "data": {
+          "auto_offpeak": "Mettre à jour automatiquement les heures creuses depuis le contrat",
           "intervals": "Plages horaires"
         }
       },
@@ -115,6 +116,7 @@
           "o_red": "ROUGE: Tarif heures creuses",
           "price": "Tarif heures pleines ou standard",
           "offpeak": "Tarif heures creuses",
+          "auto_offpeak": "Mettre à jour automatiquement les heures creuses depuis le contrat",
           "intervals": "Plages horaires"
         }
       },
@@ -313,6 +315,30 @@
         "statistic_id": {
           "name": "Id de statistique",
           "description": "Sélectionnez la statistique dont les données doivent être reconstruites"
+        }
+      }
+    }
+  },
+  "issues": {
+    "offpeak_updated": {
+      "title": "Heures creuses mises à jour",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Heures creuses mises à jour",
+            "description": "Enedis a modifié les heures creuses du PDL {pdl} : **{old}** est devenu **{new}**. Elles ont été mises à jour automatiquement. Les données déjà importées conservent leur ancienne répartition ; utilisez le service `rebuild_data` pour la recalculer. Validez pour fermer cette notification."
+          }
+        }
+      }
+    },
+    "offpeak_mismatch": {
+      "title": "Heures creuses modifiées sur le contrat",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Heures creuses modifiées sur le contrat",
+            "description": "Les heures creuses du PDL {pdl} sur le contrat Enedis (**{new}**) diffèrent de celles configurées (**{old}**). Validez pour activer le mode automatique : les heures sont appliquées immédiatement puis maintenues à jour avec le contrat."
+          }
         }
       }
     }

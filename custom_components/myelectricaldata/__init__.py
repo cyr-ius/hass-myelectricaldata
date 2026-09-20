@@ -4,6 +4,7 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from myelectricaldatapy import (
     ATTR_HPHC,
     ATTR_INTERVALS,
@@ -27,6 +28,9 @@ from .const import (
     DEFAULT_HC_PRICE,
     DEFAULT_HP_PRICE,
     DEFAULT_PC_PRICE,
+    DOMAIN,
+    ISSUE_OFFPEAK_MISMATCH,
+    ISSUE_OFFPEAK_UPDATED,
     PLATFORMS,
 )
 from .coordinator import EnedisDataUpdateCoordinator
@@ -160,6 +164,14 @@ async def async_unload_entry(
 ) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(
+    hass: HomeAssistant, entry: MyElectricalDataConfigEntry
+) -> None:
+    """Drop the repair issues raised for a removed entry."""
+    for issue in (ISSUE_OFFPEAK_MISMATCH, ISSUE_OFFPEAK_UPDATED):
+        ir.async_delete_issue(hass, DOMAIN, f"{issue}_{entry.entry_id}")
 
 
 async def _async_update_listener(

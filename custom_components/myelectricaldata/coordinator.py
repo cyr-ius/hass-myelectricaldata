@@ -12,12 +12,15 @@ from homeassistant.components.recorder.const import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ENTITY_ID, CONF_TOKEN, CONF_UNIQUE_ID
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 from myelectricaldatapy import (
+    ATTR_HPHC,
     ATTR_INTERVALS,
+    ATTR_TEMPO,
     EnedisByPDL,
     EnedisException,
     LimitReached,
@@ -28,6 +31,7 @@ from myelectricaldatapy import (
 
 from .const import (
     CONF_AUTH,
+    CONF_AUTO_OFFPEAK,
     CONF_CONSUMPTION,
     CONF_ECOWATT,
     CONF_PDL,
@@ -38,6 +42,8 @@ from .const import (
     CONF_SUBSCRIPTION,
     CONF_SUMMARY,
     DOMAIN,
+    ISSUE_OFFPEAK_MISMATCH,
+    ISSUE_OFFPEAK_UPDATED,
 )
 from .helpers import (
     async_clear_short_term_statistics,
@@ -48,7 +54,9 @@ from .helpers import (
     async_migrate_legacy_statistics,
     async_rebuild_statistics,
     build_sensor_items,
+    format_offpeak,
     next_date,
+    parse_offpeak_hours,
     read_prices,
 )
 
@@ -181,6 +189,74 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         async_clear_today_statistics(self.hass, statistic_ids)
 
     @callback
+    def _async_sync_offpeak_intervals(self) -> None:
+        """Align the configured offpeak windows with the ones on the contract.
+
+        Enedis can change a contract's offpeak hours during the year. With the
+        automatic mode (CONF_AUTO_OFFPEAK) a difference is written back to the
+        options, which reloads the entry so every sensor and the next data
+        collection use the new windows, and a repair issue tells the user.
+        Without it, a repair issue offers to enable the automatic mode.
+        """
+        options = self.config_entry.options
+        consumption = options.get(CONF_CONSUMPTION, {})
+        if not consumption.get(CONF_SERVICE) or options.get(CONF_AUTH, {}).get(
+            CONF_SUBSCRIPTION
+        ) not in (ATTR_HPHC, ATTR_TEMPO):
+            return
+        contract = self.api.contract
+        offpeak_hours = contract.offpeak_hours if contract else None
+        intervals = parse_offpeak_hours(offpeak_hours)
+        if not intervals:
+            return
+
+        entry_id = self.config_entry.entry_id
+        current = consumption.get(ATTR_INTERVALS) or {}
+        mismatch_id = f"{ISSUE_OFFPEAK_MISMATCH}_{entry_id}"
+        if intervals == current:
+            ir.async_delete_issue(self.hass, DOMAIN, mismatch_id)
+            return
+
+        placeholders = {
+            "pdl": self.pdl,
+            "old": format_offpeak(current) or "-",
+            "new": format_offpeak(intervals),
+        }
+        if not consumption.get(CONF_AUTO_OFFPEAK):
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                mismatch_id,
+                data={"entry_id": entry_id, "offpeak_hours": offpeak_hours},
+                is_fixable=True,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key=ISSUE_OFFPEAK_MISMATCH,
+                translation_placeholders=placeholders,
+            )
+            return
+
+        _LOGGER.info(
+            "Offpeak hours changed on the contract (%s), updating configuration",
+            offpeak_hours,
+        )
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            f"{ISSUE_OFFPEAK_UPDATED}_{entry_id}",
+            is_fixable=True,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=ISSUE_OFFPEAK_UPDATED,
+            translation_placeholders=placeholders,
+        )
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            options={
+                **options,
+                CONF_CONSUMPTION: {**consumption, ATTR_INTERVALS: intervals},
+            },
+        )
+
+    @callback
     def _cancel_throttle_retry(self) -> None:
         """Drop a pending post-throttle refresh, if one is scheduled."""
         if self._throttle_retry_unsub is not None:
@@ -290,6 +366,8 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Limit reached: %s", error)
         except EnedisException as error:
             _LOGGER.error("Error to update data: %s", error)
+        else:
+            self._async_sync_offpeak_intervals()
 
         # Import statistics directly onto their own sensor entity
         last_stats = await self.config_entry.async_create_task(

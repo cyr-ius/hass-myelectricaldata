@@ -8,7 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.const import CONF_ENTITY_ID
+from homeassistant.helpers import issue_registry as ir
 from myelectricaldatapy import (
+    ATTR_HPHC,
+    ATTR_INTERVALS,
     ATTR_PRICE,
     ATTR_STANDARD,
     DAILY_CONSUM,
@@ -19,9 +22,15 @@ from myelectricaldatapy import (
 )
 
 from custom_components.myelectricaldata.const import (
+    CONF_AUTH,
+    CONF_AUTO_OFFPEAK,
     CONF_CONSUMPTION,
+    CONF_SUBSCRIPTION,
     CONF_SUMMARY,
     DEFAULT_CONSUMPTION_TEMPO,
+    DOMAIN,
+    ISSUE_OFFPEAK_MISMATCH,
+    ISSUE_OFFPEAK_UPDATED,
 )
 from custom_components.myelectricaldata.coordinator import (
     EnedisDataUpdateCoordinator,
@@ -269,3 +278,98 @@ async def test_async_update_data_imports_and_rebuilds_when_api_has_stats(
     )
     assert consumption_energy[CONF_SUMMARY] == 5.0
     assert ATTR_PRICE  # keep import referenced
+
+
+# ---------------------------------------------------------------------------
+# _async_sync_offpeak_intervals
+# ---------------------------------------------------------------------------
+
+NEW_WINDOWS = {"1": {"rule_start_time": "01:30:00", "rule_end_time": "07:30:00"}}
+
+
+def _setup(
+    hass,
+    config_entry,
+    coordinator,
+    *,
+    subscription=ATTR_HPHC,
+    auto=True,
+    hours="HC (1H30-7H30)",
+):
+    options = {**config_entry.options}
+    options[CONF_AUTH] = {**options[CONF_AUTH], CONF_SUBSCRIPTION: subscription}
+    options[CONF_CONSUMPTION] = {
+        **options[CONF_CONSUMPTION],
+        CONF_AUTO_OFFPEAK: auto,
+        ATTR_INTERVALS: DEFAULT_CONSUMPTION_TEMPO[ATTR_INTERVALS],
+    }
+    hass.config_entries.async_update_entry(config_entry, options=options)
+    coordinator.api = _make_api_mock()
+    coordinator.api.contract = MagicMock(offpeak_hours=hours) if hours else None
+
+
+def _issue(hass, config_entry, kind):
+    return ir.async_get(hass).async_get_issue(DOMAIN, f"{kind}_{config_entry.entry_id}")
+
+
+async def test_sync_offpeak_auto_updates_and_raises_issue(
+    hass, coordinator, config_entry
+):
+    """Auto mode applies the contract's windows and informs the user."""
+    _setup(hass, config_entry, coordinator)
+    with patch.object(hass.config_entries, "async_schedule_reload"):
+        coordinator._async_sync_offpeak_intervals()
+
+    assert config_entry.options[CONF_CONSUMPTION][ATTR_INTERVALS] == NEW_WINDOWS
+    assert _issue(hass, config_entry, ISSUE_OFFPEAK_UPDATED) is not None
+    assert _issue(hass, config_entry, ISSUE_OFFPEAK_MISMATCH) is None
+
+
+async def test_sync_offpeak_manual_only_raises_fixable_issue(
+    hass, coordinator, config_entry
+):
+    """Without auto mode the windows are kept and a fixable issue is raised."""
+    _setup(hass, config_entry, coordinator, auto=False)
+    coordinator._async_sync_offpeak_intervals()
+
+    assert (
+        config_entry.options[CONF_CONSUMPTION][ATTR_INTERVALS]
+        == DEFAULT_CONSUMPTION_TEMPO[ATTR_INTERVALS]
+    )
+    issue = _issue(hass, config_entry, ISSUE_OFFPEAK_MISMATCH)
+    assert issue is not None and issue.is_fixable
+
+
+async def test_sync_offpeak_clears_mismatch_when_aligned(
+    hass, coordinator, config_entry
+):
+    """The mismatch issue disappears once the windows match the contract."""
+    _setup(hass, config_entry, coordinator, auto=False)
+    coordinator._async_sync_offpeak_intervals()
+    options = {**config_entry.options}
+    options[CONF_CONSUMPTION] = {
+        **options[CONF_CONSUMPTION],
+        ATTR_INTERVALS: NEW_WINDOWS,
+    }
+    hass.config_entries.async_update_entry(config_entry, options=options)
+    coordinator.api.contract = MagicMock(offpeak_hours="HC (1H30-7H30)")
+    coordinator._async_sync_offpeak_intervals()
+
+    assert _issue(hass, config_entry, ISSUE_OFFPEAK_MISMATCH) is None
+
+
+@pytest.mark.parametrize(
+    ("subscription", "hours"),
+    [("standard", "HC (1H30-7H30)"), (ATTR_HPHC, None)],
+)
+async def test_sync_offpeak_noop(hass, coordinator, config_entry, subscription, hours):
+    """Standard plans and contracts without offpeak hours are left alone."""
+    _setup(hass, config_entry, coordinator, subscription=subscription, hours=hours)
+    coordinator._async_sync_offpeak_intervals()
+
+    assert (
+        config_entry.options[CONF_CONSUMPTION][ATTR_INTERVALS]
+        == DEFAULT_CONSUMPTION_TEMPO[ATTR_INTERVALS]
+    )
+    assert _issue(hass, config_entry, ISSUE_OFFPEAK_UPDATED) is None
+    assert _issue(hass, config_entry, ISSUE_OFFPEAK_MISMATCH) is None

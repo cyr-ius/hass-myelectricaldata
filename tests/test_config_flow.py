@@ -20,6 +20,7 @@ from myelectricaldatapy import (
 from custom_components.myelectricaldata.config_flow import default_settings
 from custom_components.myelectricaldata.const import (
     CONF_AUTH,
+    CONF_AUTO_OFFPEAK,
     CONF_CONSUMPTION,
     CONF_ECOWATT,
     CONF_PDL,
@@ -193,6 +194,35 @@ async def test_user_step_tempo_subscription_goes_through_intervals(hass, pdl):
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["options"][CONF_CONSUMPTION][CONF_SERVICE] == DETAIL_CONSUM
     assert result["options"][CONF_CONSUMPTION][ATTR_INTERVALS]
+    # The automatic mode is proposed and enabled by default.
+    assert result["options"][CONF_CONSUMPTION][CONF_AUTO_OFFPEAK] is True
+
+
+async def test_user_step_intervals_can_disable_auto_offpeak(hass, pdl):
+    """The user can decline the automatic off-peak mode."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": "user"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PDL: pdl,
+            CONF_TOKEN: "a-token",
+            CONF_ECOWATT: False,
+            CONF_PRODUCTION: False,
+            CONF_CONSUMPTION: True,
+            CONF_SUBSCRIPTION: ATTR_HPHC,
+        },
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"standard": 0.18, "offpeak": 0.14}
+    )
+    assert result["step_id"] == "intervals"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_AUTO_OFFPEAK: False}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["options"][CONF_CONSUMPTION][CONF_AUTO_OFFPEAK] is False
 
 
 # ---------------------------------------------------------------------------

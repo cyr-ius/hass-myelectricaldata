@@ -37,8 +37,9 @@
       },
       "intervals": {
         "title": "Off-peak ranges",
-        "description": "Adjust the off-peak windows split from the load curve. They default to 22:00 -> 06:00. Leave the selection empty to continue.",
+        "description": "Adjust the off-peak windows split from the load curve. They are read from your contract (22:00 -> 06:00 when unavailable). Enedis may change them during the year: enable the automatic mode to keep them in sync. Manual changes are overwritten while it is enabled. Leave the selection empty to continue.",
         "data": {
+          "auto_offpeak": "Automatically update off-peak hours from the contract",
           "intervals": "Off-peak ranges"
         }
       },
@@ -113,6 +114,7 @@
           "o_red": "Price RED: off-peak hour",
           "price": "Price: full hour",
           "offpeak": "Price: off-peak hour",
+          "auto_offpeak": "Automatically update off-peak hours from the contract",
           "intervals": "Off-peak ranges"
         }
       },
@@ -243,6 +245,30 @@
         "statistic_id": {
           "name": "Statistic Id",
           "description": "Select statistic to rebuild data from"
+        }
+      }
+    }
+  },
+  "issues": {
+    "offpeak_updated": {
+      "title": "Off-peak hours updated",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Off-peak hours updated",
+            "description": "Enedis changed the off-peak hours of PDL {pdl}: **{old}** became **{new}**. They were updated automatically. Data already imported keeps its previous split; use the `rebuild_data` service to recompute it. Confirm to dismiss this notice."
+          }
+        }
+      }
+    },
+    "offpeak_mismatch": {
+      "title": "Off-peak hours changed on the contract",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Off-peak hours changed on the contract",
+            "description": "The off-peak hours of PDL {pdl} on the Enedis contract (**{new}**) differ from the configured ones (**{old}**). Confirm to enable the automatic mode: the hours are applied now and kept in sync with the contract in the future."
+          }
         }
       }
     }

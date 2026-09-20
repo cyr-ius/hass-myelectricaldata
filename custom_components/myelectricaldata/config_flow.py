@@ -45,6 +45,7 @@ from myelectricaldatapy import (
 
 from .const import (
     CONF_AUTH,
+    CONF_AUTO_OFFPEAK,
     CONF_CONSUMPTION,
     CONF_PDL,
     CONF_PRODUCTION,
@@ -63,6 +64,7 @@ from .const import (
     DOMAIN,
     SAVE,
 )
+from .helpers import parse_offpeak_hours
 
 # Plain value lists so the frontend resolves each label through the
 # selector's translation_key (an explicit SelectOptionDict label would be
@@ -104,12 +106,6 @@ async def _async_tempo_defaults(api: Enedis) -> dict[str, Any]:
     }
 
 
-def _normalize_offpeak(value: str) -> str:
-    """Convert an Enedis offpeak bound like '22H30' to 'HH:MM:SS'."""
-    hour, _, minute = value.upper().partition("H")
-    return f"{int(hour):02d}:{int(minute or 0):02d}:00"
-
-
 def _default_intervals() -> dict[str, dict[str, str]]:
     """Return a fresh copy of the built-in off-peak windows (22:00 -> 06:00)."""
     return {
@@ -120,19 +116,15 @@ def _default_intervals() -> dict[str, dict[str, str]]:
 
 async def _async_intervals_defaults(api: Enedis, pdl: str) -> dict[str, dict[str, str]]:
     """Return the contract offpeak windows, falling back to static defaults."""
+    contract = None
     try:
-        await api.async_get_contract(pdl)
+        contract = await api.async_get_contract(pdl)
     except EnedisException as error:
         _LOGGER.debug("Contract unavailable: %s", error)
-    if api.offpeaks:
-        return {
-            str(idx): {
-                CONF_RULE_START_TIME: _normalize_offpeak(start),
-                CONF_RULE_END_TIME: _normalize_offpeak(end),
-            }
-            for idx, (start, end) in enumerate(api.offpeaks, start=1)
-        }
-    return _default_intervals()
+    return (
+        parse_offpeak_hours(contract.offpeak_hours if contract else None)
+        or _default_intervals()
+    )
 
 
 def _subscription_pricing_schema(
@@ -309,6 +301,7 @@ class MyElectricalFlowHandler(
         self._production_price: float | None = None
         self._tempo_defaults: dict[str, Any] | None = None
         self._intervals: dict[str, dict[str, str]] = {}
+        self._auto_offpeak = True
 
     @staticmethod
     @callback
@@ -375,10 +368,13 @@ class MyElectricalFlowHandler(
         """Review the off-peak windows applied to the load curve.
 
         HP/HC and Tempo split the load curve into full/offpeak buckets using
-        these windows; they default to 22:00 -> 06:00 (see const). Submitting
-        without a selection keeps the current windows and moves on.
+        these windows, read from the contract (22:00 -> 06:00 when unavailable).
+        Enedis can change them during the year, so the user may let the
+        integration keep them in sync with the contract. Submitting without a
+        selection keeps the current windows and moves on.
         """
         if user_input is not None:
+            self._auto_offpeak = user_input[CONF_AUTO_OFFPEAK]
             if selected := user_input.get(ATTR_INTERVALS):
                 return await self.async_step_rules(None, selected, CONF_CONSUMPTION)
             if self._data[CONF_PRODUCTION]:
@@ -389,6 +385,9 @@ class MyElectricalFlowHandler(
             step_id="intervals",
             data_schema=vol.Schema(
                 {
+                    vol.Required(
+                        CONF_AUTO_OFFPEAK, default=self._auto_offpeak
+                    ): bool,
                     vol.Optional(ATTR_INTERVALS): SelectSelector(
                         SelectSelectorConfig(
                             options=self.get_intervals(CONF_CONSUMPTION),
@@ -452,6 +451,7 @@ class MyElectricalFlowHandler(
             }
             if self._intervals:
                 consumption[ATTR_INTERVALS] = self._intervals
+                consumption[CONF_AUTO_OFFPEAK] = self._auto_offpeak
             opts[CONF_CONSUMPTION] = consumption
 
         options = default_settings(opts)
@@ -516,6 +516,7 @@ class MyElectricalDataOptionsFlowHandler(_RulesFlowMixin, config_entries.Options
                 # and Tempo split the load curve and fall back to 22:00 -> 06:00.
                 if new == ATTR_STANDARD:
                     self._data[CONF_CONSUMPTION].pop(ATTR_INTERVALS, None)
+                    self._data[CONF_CONSUMPTION].pop(CONF_AUTO_OFFPEAK, None)
                 else:
                     self._data[CONF_CONSUMPTION][ATTR_INTERVALS] = _default_intervals()
             return await self.async_step_pricing()
@@ -609,6 +610,14 @@ class MyElectricalDataOptionsFlowHandler(_RulesFlowMixin, config_entries.Options
             consumption[ATTR_INTERVALS] = await _async_intervals_defaults(
                 api, self.config_entry.data[CONF_PDL]
             )
+        auto_offpeak: dict[Any, Any] = {}
+        if forces_detail:
+            auto_offpeak[
+                vol.Required(
+                    CONF_AUTO_OFFPEAK,
+                    default=consumption.get(CONF_AUTO_OFFPEAK, False),
+                )
+            ] = bool
         data_schema = vol.Schema(
             {
                 vol.Optional(
@@ -627,6 +636,7 @@ class MyElectricalDataOptionsFlowHandler(_RulesFlowMixin, config_entries.Options
                         translation_key="consumption_choice",
                     )
                 ),
+                **auto_offpeak,
                 vol.Optional(ATTR_INTERVALS): SelectSelector(
                     SelectSelectorConfig(
                         options=self.get_intervals(step_id),
@@ -638,6 +648,8 @@ class MyElectricalDataOptionsFlowHandler(_RulesFlowMixin, config_entries.Options
         )
         if user_input is not None:
             self._data[step_id].update({CONF_SERVICE: user_input.get(CONF_SERVICE)})
+            if CONF_AUTO_OFFPEAK in user_input:
+                self._data[step_id][CONF_AUTO_OFFPEAK] = user_input[CONF_AUTO_OFFPEAK]
             if sel_interval := user_input.get(ATTR_INTERVALS):
                 return await self.async_step_rules(None, sel_interval, step_id)
             return await self.async_step_init()
