@@ -1,6 +1,6 @@
 """MyElectrical entity definitions."""
 
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -25,6 +25,7 @@ class MyElectricalEntity(CoordinatorEntity[EnedisDataUpdateCoordinator]):
         self._attr_unique_id = f"{coordinator.pdl}_{description.key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.pdl)},
+            entry_type=DeviceEntryType.SERVICE,
             name=f"{DOMAIN} ({coordinator.pdl})",
             configuration_url=URL,
             manufacturer=MANUFACTURER,
