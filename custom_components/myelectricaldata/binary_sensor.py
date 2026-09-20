@@ -10,12 +10,13 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
-from myelectricaldatapy import ATTR_INTERVALS, Subscription
+from myelectricaldatapy import Subscription
+from myelectricaldatapy.const import ATTR_INTERVALS
 
 from . import MyElectricalDataConfigEntry
 from .const import CONF_CONSUMPTION, CONF_RULE_END_TIME, CONF_RULE_START_TIME
@@ -60,7 +61,7 @@ def _is_applicable(
     coordinator: EnedisDataUpdateCoordinator,
 ) -> bool:
     """Return whether the binary sensor is relevant for the account's configuration."""
-    if description.key == "access_token":
+    if description.key == "access_token" or description.subscriptions is None:
         return True
 
     return coordinator.api.subscription in description.subscriptions
@@ -81,7 +82,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class CountdownSensor(MyElectricalEntity, BinarySensorEntity):
+class CountdownSensor(MyElectricalEntity, BinarySensorEntity):  # pyright: ignore[reportIncompatibleVariableOverride]
     """Sensor that turns on once the API access consent has expired."""
 
     def __init__(self, coordinator, description) -> None:
@@ -93,6 +94,8 @@ class CountdownSensor(MyElectricalEntity, BinarySensorEntity):
     def _fetch_state(self) -> bool:
         """Return True once the consent expiration date has been reached."""
         access = self.coordinator.api.access
+        if access is None:
+            return True
         expiration_date = dt_util.parse_datetime(access.consent_expiration_date or "")
         if expiration_date is None:
             return access.valid is False
@@ -123,7 +126,7 @@ class CountdownSensor(MyElectricalEntity, BinarySensorEntity):
 OFFPEAK_RECALC_INTERVAL = timedelta(minutes=5)
 
 
-class OffpeakSensor(MyElectricalEntity, BinarySensorEntity):
+class OffpeakSensor(MyElectricalEntity, BinarySensorEntity):  # pyright: ignore[reportIncompatibleVariableOverride]
     """Sensor return offpeak status."""
 
     def __init__(self, coordinator, description) -> None:

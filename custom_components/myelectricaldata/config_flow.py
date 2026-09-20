@@ -6,10 +6,13 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigEntryBaseFlow,
+    ConfigFlowResult,
+)
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import callback
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.selector import (
     SelectOptionDict,
@@ -20,6 +23,13 @@ from homeassistant.helpers.selector import (
     TimeSelectorConfig,
 )
 from myelectricaldatapy import (
+    Enedis,
+    EnedisException,
+    Prices,
+    StandardPrice,
+    TempoPrice,
+)
+from myelectricaldatapy.const import (
     ATTR_HPHC,
     ATTR_INTERVALS,
     ATTR_OFFPEAK,
@@ -36,11 +46,6 @@ from myelectricaldatapy import (
     TEMPO_DAYS,
     TEMPO_R,
     TEMPO_W,
-    Enedis,
-    EnedisException,
-    Prices,
-    StandardPrice,
-    TempoPrice,
 )
 
 from .const import (
@@ -201,7 +206,7 @@ def _read_standard_price(prices: dict[str, Any], default: float) -> float:
     return prices.get(ATTR_STANDARD, {}).get(ATTR_PRICE, default)
 
 
-class _RulesFlowMixin:
+class _RulesFlowMixin(ConfigEntryBaseFlow):
     """Shared off-peak interval (rules) editing sub-flow.
 
     Subclasses expose ``_intervals_for(step_id)`` (the mutable id -> window
@@ -215,7 +220,7 @@ class _RulesFlowMixin:
         """Return the mutable interval map for the given section."""
         raise NotImplementedError
 
-    async def _after_rules(self, step_id: str | None) -> FlowResult:
+    async def _after_rules(self, step_id: str | None) -> ConfigFlowResult:
         """Return the step to resume after the rules form."""
         raise NotImplementedError
 
@@ -224,7 +229,7 @@ class _RulesFlowMixin:
         user_input: dict[str, Any] | None = None,
         rule_id: str | None = None,
         step_id: str | None = None,
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Add, edit or delete a single off-peak window."""
         if rule_id is not None:
             self._conf_rule_id = rule_id if rule_id != CONF_RULE_NEW_ID else None
@@ -239,14 +244,14 @@ class _RulesFlowMixin:
                     rules.pop(str(rule_id), None)
                 else:
                     rules[str(rule_id)] = {
-                        CONF_RULE_START_TIME: user_input.get(CONF_RULE_START_TIME),
-                        CONF_RULE_END_TIME: user_input.get(CONF_RULE_END_TIME),
+                        CONF_RULE_START_TIME: user_input[CONF_RULE_START_TIME],
+                        CONF_RULE_END_TIME: user_input[CONF_RULE_END_TIME],
                     }
 
         return await self._after_rules(step_id)
 
     @callback
-    def _async_rules_form(self, rule_id: str, step_id: str | None) -> FlowResult:
+    def _async_rules_form(self, rule_id: str, step_id: str | None) -> ConfigFlowResult:
         """Return the configuration form for a single off-peak window."""
         intervals = self._intervals_for(step_id)
         schema = {
@@ -298,7 +303,7 @@ class MyElectricalFlowHandler(
         """Initialize the config flow."""
         self._data: dict[str, Any] = {}
         self._prices: dict[str, Any] = {}
-        self._production_price: float | None = None
+        self._production_price: float = DEFAULT_PC_PRICE
         self._tempo_defaults: dict[str, Any] | None = None
         self._intervals: dict[str, dict[str, str]] = {}
         self._auto_offpeak = True
@@ -309,7 +314,7 @@ class MyElectricalFlowHandler(
         """Get option flow."""
         return MyElectricalDataOptionsFlowHandler(config_entry)
 
-    async def async_step_user(self, user_input=None):
+    async def async_step_user(self, user_input=None) -> ConfigFlowResult:
         """Handle a flow initialized by the user."""
         errors = {}
         if user_input is not None:
@@ -341,7 +346,9 @@ class MyElectricalFlowHandler(
             step_id="user", data_schema=DATA_SCHEMA, errors=errors
         )
 
-    async def async_step_pricing(self, user_input: dict[str, Any] | None = None):
+    async def async_step_pricing(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Collect the tariff(s) matching the chosen subscription."""
         subscription = self._data[CONF_SUBSCRIPTION]
         has_intervals_step = self._data[CONF_CONSUMPTION] and subscription in (
@@ -364,7 +371,9 @@ class MyElectricalFlowHandler(
             last_step=not has_intervals_step and not self._data[CONF_PRODUCTION],
         )
 
-    async def async_step_intervals(self, user_input: dict[str, Any] | None = None):
+    async def async_step_intervals(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Review the off-peak windows applied to the load curve.
 
         HP/HC and Tempo split the load curve into full/offpeak buckets using
@@ -385,16 +394,14 @@ class MyElectricalFlowHandler(
             step_id="intervals",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        CONF_AUTO_OFFPEAK, default=self._auto_offpeak
-                    ): bool,
+                    vol.Required(CONF_AUTO_OFFPEAK, default=self._auto_offpeak): bool,
                     vol.Optional(ATTR_INTERVALS): SelectSelector(
                         SelectSelectorConfig(
                             options=self.get_intervals(CONF_CONSUMPTION),
                             mode=SelectSelectorMode.LIST,
                             translation_key="interval_key",
                         )
-                    )
+                    ),
                 }
             ),
             last_step=not self._data[CONF_PRODUCTION],
@@ -404,13 +411,13 @@ class MyElectricalFlowHandler(
         """Return the single interval map tracked across the config flow."""
         return self._intervals
 
-    async def _after_rules(self, step_id: str | None) -> FlowResult:
+    async def _after_rules(self, step_id: str | None) -> ConfigFlowResult:
         """Return to the interval review screen after editing a window."""
         return await self.async_step_intervals()
 
     async def async_step_production_pricing(
         self, user_input: dict[str, Any] | None = None
-    ):
+    ) -> ConfigFlowResult:
         """Collect the cost per kWh of the energy the user produces."""
         if user_input is not None:
             self._production_price = user_input[ATTR_STANDARD]
@@ -428,7 +435,7 @@ class MyElectricalFlowHandler(
         )
 
     @callback
-    def _async_create_entry(self) -> FlowResult:
+    def _async_create_entry(self) -> ConfigFlowResult:
         """Create the config entry from the data collected across the flow."""
         data = {CONF_PDL: self._data[CONF_PDL]}
         opts: dict[str, Any] = {
@@ -477,14 +484,16 @@ class MyElectricalDataOptionsFlowHandler(_RulesFlowMixin, config_entries.Options
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle options flow."""
         return self.async_show_menu(
             step_id="init",
             menu_options=[CONF_AUTH, CONF_PRODUCTION, CONF_CONSUMPTION, SAVE],
         )
 
-    async def async_step_authentication(self, user_input: dict[str, Any] | None = None):
+    async def async_step_authentication(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Authenticate step."""
         step_id = CONF_AUTH
         schema = vol.Schema(
@@ -526,7 +535,7 @@ class MyElectricalDataOptionsFlowHandler(_RulesFlowMixin, config_entries.Options
 
     async def async_step_pricing(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Collect the tariff(s) matching the chosen subscription."""
         auth = self._data[CONF_AUTH]
         consumption = self._data[CONF_CONSUMPTION]
@@ -553,7 +562,9 @@ class MyElectricalDataOptionsFlowHandler(_RulesFlowMixin, config_entries.Options
             last_step=False,
         )
 
-    async def async_step_production(self, user_input: dict[str, Any] | None = None):
+    async def async_step_production(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Production step."""
         step_id = CONF_PRODUCTION
         schema = vol.Schema(
@@ -590,7 +601,9 @@ class MyElectricalDataOptionsFlowHandler(_RulesFlowMixin, config_entries.Options
             step_id=step_id, data_schema=schema, last_step=False
         )
 
-    async def async_step_consumption(self, user_input: dict[str, Any] | None = None):
+    async def async_step_consumption(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Consumption step."""
         step_id = CONF_CONSUMPTION
         consumption = self._data[step_id]
@@ -659,7 +672,7 @@ class MyElectricalDataOptionsFlowHandler(_RulesFlowMixin, config_entries.Options
 
     async def async_step_save(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Save the updated options."""
         self._data = default_settings(self._data)
         self._data.update({"last_update": dt.now()})
@@ -667,9 +680,11 @@ class MyElectricalDataOptionsFlowHandler(_RulesFlowMixin, config_entries.Options
 
     def _intervals_for(self, step_id: str | None) -> dict[str, dict[str, str]]:
         """Return the mutable interval map for the given section."""
+        if step_id is None:
+            raise ValueError("step_id is required to edit off-peak windows")
         return self._data[step_id].setdefault(ATTR_INTERVALS, {})
 
-    async def _after_rules(self, step_id: str | None) -> FlowResult:
+    async def _after_rules(self, step_id: str | None) -> ConfigFlowResult:
         """Return to the edited section after saving a window."""
         if step_id == CONF_CONSUMPTION:
             return await self.async_step_consumption()

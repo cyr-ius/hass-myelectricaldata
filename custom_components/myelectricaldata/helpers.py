@@ -8,7 +8,7 @@ from datetime import datetime as dt
 from datetime import timedelta
 from typing import Any, override
 
-from homeassistant.components.recorder import Recorder, get_instance
+from homeassistant.components.recorder.core import Recorder
 from homeassistant.components.recorder.db_schema import Statistics, StatisticsShortTerm
 from homeassistant.components.recorder.models import (
     StatisticData,
@@ -21,14 +21,14 @@ from homeassistant.components.recorder.statistics import (
     statistics_during_period,
 )
 from homeassistant.components.recorder.tasks import RecorderTask
-from homeassistant.components.recorder.util import session_scope
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.recorder import get_instance, session_scope
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 from homeassistant.util.unit_conversion import EnergyConverter
-from myelectricaldatapy import (
+from myelectricaldatapy.const import (
     ATTR_OFFPEAK,
     ATTR_PRICE,
     ATTR_PRICES,
@@ -38,7 +38,7 @@ from myelectricaldatapy import (
     DETAIL_CONSUM,
     DETAIL_PROD,
 )
-from sqlalchemy import delete
+from sqlalchemy import ColumnElement, delete
 
 from .const import (
     CONF_CONSUMPTION,
@@ -54,21 +54,20 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_get_db_infos(hass: HomeAssistant, statistic_id: str) -> tuple[str, dt]:
+async def async_get_db_infos(
+    hass: HomeAssistant, statistic_id: str
+) -> tuple[float, dt | None]:
     """Fetch last information in database."""
     last_stats = await get_instance(hass).async_add_executor_job(
         get_last_statistics, hass, 1, statistic_id, True, {"sum"}
     )
-    last_summary, dt_last_stat = (
-        (0, None)
-        if not last_stats
-        else (
-            last_stats[statistic_id][0]["sum"],
-            dt_util.as_local(
-                dt_util.utc_from_timestamp(last_stats[statistic_id][0]["start"])
-            ),
-        )
-    )
+    last_summary: float = 0
+    dt_last_stat: dt | None = None
+    if last_stats:
+        last_row = last_stats[statistic_id][0]
+        last_summary = last_row.get("sum") or 0
+        if (start := last_row.get("start")) is not None:
+            dt_last_stat = dt_util.as_local(dt_util.utc_from_timestamp(start))
     _LOGGER.debug(
         "[%s] summary: %s, last date: %s", statistic_id, last_summary, dt_last_stat
     )
@@ -77,7 +76,7 @@ async def async_get_db_infos(hass: HomeAssistant, statistic_id: str) -> tuple[st
 
 async def async_get_last_infos(
     hass: HomeAssistant, items: list[dict[str, Any]]
-) -> tuple[dt, dict[str, float], dict[str, float]]:
+) -> tuple[dt | None, dict[str, float], dict[str, float]]:
     """Set default api."""
     sum_values: dict[str, float] = {}
     sum_prices: dict[str, float] = {}
@@ -239,7 +238,7 @@ async def async_import_sensor_statistics(
 
         last_row = max(rows, key=lambda row: row["start"])
         last_stats[item["entity_id"]] = (
-            last_row["sum"],
+            last_row.get("sum") or 0,
             dt_util.as_local(last_row["start"]),
         )
 
@@ -376,7 +375,9 @@ class _ClearStatisticsRangeTask(RecorderTask):
                 metadata_ids := [metadata_id for metadata_id, _ in metadata.values()]
             ):
                 return
-            conditions = [Statistics.metadata_id.in_(metadata_ids)]
+            conditions: list[ColumnElement[bool]] = [
+                Statistics.metadata_id.in_(metadata_ids)
+            ]
             if self.start is not None:
                 conditions.append(Statistics.start_ts >= self.start.timestamp())
             if self.end is not None:
@@ -458,9 +459,9 @@ async def async_migrate_legacy_statistics(
 
         rows = [
             StatisticData(
-                start=dt_util.utc_from_timestamp(value["start"]),
-                state=value["state"],
-                sum=value["sum"],
+                start=dt_util.utc_from_timestamp(value.get("start", 0)),
+                state=value.get("state") or 0,
+                sum=value.get("sum") or 0,
             )
             for value in values
         ]
@@ -534,11 +535,11 @@ async def async_rebuild_statistics(
 
         running_sum = 0.0
         rows = []
-        for value in sorted(values, key=lambda v: v["start"]):
+        for value in sorted(values, key=lambda v: v.get("start", 0)):
             running_sum += value.get("state") or 0
             rows.append(
                 StatisticData(
-                    start=dt_util.utc_from_timestamp(value["start"]),
+                    start=dt_util.utc_from_timestamp(value.get("start", 0)),
                     state=value.get("state") or 0,
                     sum=running_sum,
                 )

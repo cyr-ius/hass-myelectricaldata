@@ -1,7 +1,12 @@
 """Constants for the Enedis integration."""
 
 from homeassistant.const import Platform
-from myelectricaldatapy import ATTR_INTERVALS, ATTR_OFFPEAK, ATTR_PRICES, ATTR_STANDARD
+from myelectricaldatapy.const import (
+    ATTR_INTERVALS,
+    ATTR_OFFPEAK,
+    ATTR_PRICES,
+    ATTR_STANDARD,
+)
 
 CLEAR_SERVICE = "clear_data"
 CONF_AUTH = "authentication"

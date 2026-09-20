@@ -5,12 +5,14 @@ from datetime import UTC, timedelta
 from datetime import datetime as dt
 from typing import Any
 
-from homeassistant.components.recorder.const import (
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import (
+    CONF_ENTITY_ID,
+    CONF_TOKEN,
+    CONF_UNIQUE_ID,
     EVENT_RECORDER_5MIN_STATISTICS_GENERATED,
     EVENT_RECORDER_HOURLY_STATISTICS_GENERATED,
 )
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_ENTITY_ID, CONF_TOKEN, CONF_UNIQUE_ID
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -18,16 +20,14 @@ from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 from myelectricaldatapy import (
-    ATTR_HPHC,
-    ATTR_INTERVALS,
-    ATTR_TEMPO,
     EnedisByPDL,
     EnedisException,
+    EnergyCollect,
     LimitReached,
-    Service,
     Subscription,
     ThrottlingError,
 )
+from myelectricaldatapy.const import ATTR_HPHC, ATTR_INTERVALS, ATTR_TEMPO
 
 from .const import (
     CONF_AUTH,
@@ -87,6 +87,8 @@ def _parse_next_access_time(value: str | None) -> dt | None:
 class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
     """Define an object to fetch data."""
 
+    config_entry: ConfigEntry
+
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
         """Class to manage fetching data API."""
         self.last_stat: dt | None = None
@@ -94,7 +96,13 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self._migrated_legacy_stats = False
         self._throttle_retry_unsub: CALLBACK_TYPE | None = None
 
-        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=SCAN_INTERVAL)
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=config_entry,
+            name=DOMAIN,
+            update_interval=SCAN_INTERVAL,
+        )
 
     async def _async_setup(self) -> None:
         """Set up the coordinator."""
@@ -307,7 +315,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
 
         items: list[dict[str, Any]] = []
         for mode, opt in dict_opts.items():
-            service: Service = opt.get(CONF_SERVICE)
+            service: EnergyCollect = opt.get(CONF_SERVICE)
             intervals = [
                 (interval[CONF_RULE_START_TIME], interval[CONF_RULE_END_TIME])
                 for interval in opt.get(ATTR_INTERVALS, {}).values()

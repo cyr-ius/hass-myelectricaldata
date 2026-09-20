@@ -5,7 +5,7 @@ from typing import cast
 from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
-from myelectricaldatapy import ATTR_INTERVALS
+from myelectricaldatapy.const import ATTR_INTERVALS
 
 from .const import (
     CONF_AUTO_OFFPEAK,

@@ -5,7 +5,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
-from myelectricaldatapy import (
+from myelectricaldatapy.const import (
     ATTR_HPHC,
     ATTR_INTERVALS,
     ATTR_OFFPEAK,

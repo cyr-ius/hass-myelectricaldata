@@ -1,7 +1,7 @@
 """Sensor for power energy."""
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final, override
@@ -12,13 +12,13 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfEnergy
+from homeassistant.const import EntityCategory, UnitOfEnergy
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
-from myelectricaldatapy import (
+from myelectricaldatapy import Subscription
+from myelectricaldatapy.const import (
     ATTR_OFFPEAK,
     ATTR_PRICE,
     ATTR_PRICES,
@@ -27,7 +27,6 @@ from myelectricaldatapy import (
     TEMPO_DAYS,
     TEMPO_R,
     TEMPO_W,
-    Subscription,
 )
 
 from . import MyElectricalDataConfigEntry
@@ -46,7 +45,7 @@ from .coordinator import EnedisDataUpdateCoordinator
 from .entity import MyElectricalEntity
 
 DAY_VALUES = (CONF_NA, CONF_GREEN, CONF_ORANGE, CONF_RED)
-TEMPO_DAYS = list(TEMPO_DAYS)
+TEMPO_OPTIONS: list[str] = list(TEMPO_DAYS)
 EUR = "EUR"
 EUR_PER_KWH = "EUR/kWh"
 _LOGGER = logging.getLogger(__name__)
@@ -62,7 +61,7 @@ class MyElectricalSensorEntityDescription(SensorEntityDescription):
     ]
     subscriptions: Subscription | None = None
     requires_production: bool = False
-    value_fn: Callable[[dict[str, Any]], float] | None = None
+    value_fn: Callable[[Mapping[str, Any]], float] | None = None
 
 
 SENSOR_TYPES: Final[tuple[MyElectricalSensorEntityDescription, ...]] = (
@@ -272,7 +271,7 @@ SENSOR_TYPES: Final[tuple[MyElectricalSensorEntityDescription, ...]] = (
         translation_key="tempo",
         device_class=SensorDeviceClass.ENUM,
         native_unit_of_measurement=None,
-        options=TEMPO_DAYS,
+        options=TEMPO_OPTIONS,
         cls=lambda coordinator, description: TempoSensor(coordinator, description),
         subscriptions=Subscription.TEMPO,
     ),
@@ -340,18 +339,24 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class PowerSensor(MyElectricalEntity, SensorEntity):
+class PowerSensor(MyElectricalEntity, SensorEntity):  # pyright: ignore[reportIncompatibleVariableOverride]
     """Sensor backed by its own long-term statistics (energy or cost bucket)."""
 
-    entity_description: MyElectricalSensorEntityDescription
+    entity_description: MyElectricalSensorEntityDescription  # pyright: ignore[reportIncompatibleVariableOverride]
 
-    def __init__(self, coordinator, description) -> None:
+    def __init__(
+        self,
+        coordinator: EnedisDataUpdateCoordinator,
+        description: MyElectricalSensorEntityDescription,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, description)
         self._attr_extra_state_attributes = self._build_extra_state_attributes()
-        self._attr_native_value = self.coordinator.data.get(self.unique_id, {}).get(
-            CONF_SUMMARY
-        )
+        self._attr_native_value = self._fetch_summary()
+
+    def _fetch_summary(self) -> Any:
+        """Return the summary value computed by the coordinator for this sensor."""
+        return self.coordinator.data.get(self.unique_id or "", {}).get(CONF_SUMMARY)
 
     @property
     @override
@@ -376,27 +381,32 @@ class PowerSensor(MyElectricalEntity, SensorEntity):
     @override
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        self._attr_native_value = self.coordinator.data.get(self.unique_id, {}).get(
-            CONF_SUMMARY
-        )
+        self._attr_native_value = self._fetch_summary()
         super()._handle_coordinator_update()
 
 
-class PriceSensor(MyElectricalEntity, SensorEntity):
+class PriceSensor(MyElectricalEntity, SensorEntity):  # pyright: ignore[reportIncompatibleVariableOverride]
     """Read-only mirror of a tariff set via the config/options flow."""
 
-    entity_description: MyElectricalSensorEntityDescription
+    entity_description: MyElectricalSensorEntityDescription  # pyright: ignore[reportIncompatibleVariableOverride]
 
-    def __init__(self, coordinator, description) -> None:
+    def __init__(
+        self,
+        coordinator: EnedisDataUpdateCoordinator,
+        description: MyElectricalSensorEntityDescription,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, description)
-        self._attr_native_value = description.value_fn(coordinator.config_entry.options)
+        if description.value_fn is not None:
+            self._attr_native_value = description.value_fn(
+                coordinator.config_entry.options
+            )
 
 
-class TempoSensor(MyElectricalEntity, SensorEntity):
+class TempoSensor(MyElectricalEntity, SensorEntity):  # pyright: ignore[reportIncompatibleVariableOverride]
     """Sensor return token expiration date."""
 
-    entity_description: MyElectricalSensorEntityDescription
+    entity_description: MyElectricalSensorEntityDescription  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def __init__(self, coordinator, description) -> None:
         """Initialize the sensor."""
@@ -414,7 +424,7 @@ class TempoSensor(MyElectricalEntity, SensorEntity):
         super()._handle_coordinator_update()
 
 
-class LastApiCallSensor(MyElectricalEntity, SensorEntity):
+class LastApiCallSensor(MyElectricalEntity, SensorEntity):  # pyright: ignore[reportIncompatibleVariableOverride]
     """Sensor exposing the last call made to the Enedis API."""
 
     def __init__(self, coordinator, description) -> None:
@@ -426,8 +436,10 @@ class LastApiCallSensor(MyElectricalEntity, SensorEntity):
     def _fetch_state(self) -> datetime | None:
         """Return the date of the last call to the API."""
         last_refresh = self.coordinator.api.last_refresh
-        if last_refresh and last_refresh.tzinfo is None:
-            last_refresh = dt_util.as_utc(last_refresh)
+        if not isinstance(last_refresh, datetime):
+            return None
+        if last_refresh.tzinfo is None:
+            return dt_util.as_utc(last_refresh)
         return last_refresh
 
     def _build_extra_state_attributes(self) -> dict:
@@ -454,7 +466,7 @@ class LastApiCallSensor(MyElectricalEntity, SensorEntity):
         super()._handle_coordinator_update()
 
 
-class EcoWattSensor(MyElectricalEntity, SensorEntity):
+class EcoWattSensor(MyElectricalEntity, SensorEntity):  # pyright: ignore[reportIncompatibleVariableOverride]
     """Sensor return token expiration date."""
 
     def __init__(self, coordinator, description) -> None:
