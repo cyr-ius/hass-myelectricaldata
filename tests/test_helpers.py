@@ -73,9 +73,11 @@ async def _import_metadata(hass, statistic_id: str, rows: list[StatisticData]) -
 # ---------------------------------------------------------------------------
 
 
-def test_build_sensor_items_daily_no_price():
+def test_build_sensor_items_daily_no_price(hass):
     """A daily service always yields a single standard energy item."""
-    items = build_sensor_items(CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False)
+    items = build_sensor_items(
+        hass, CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False
+    )
     assert len(items) == 1
     item = items[0]
     assert item["note"] == ATTR_STANDARD
@@ -85,9 +87,11 @@ def test_build_sensor_items_daily_no_price():
     assert item["entity_id"].startswith("sensor.")
 
 
-def test_build_sensor_items_daily_with_price_adds_cost_item():
+def test_build_sensor_items_daily_with_price_adds_cost_item(hass):
     """When pricing is configured, a companion cost item is added."""
-    items = build_sensor_items(CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=True)
+    items = build_sensor_items(
+        hass, CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=True
+    )
     assert len(items) == 2
     kinds = {item["kind"] for item in items}
     assert kinds == {"energy", "cost"}
@@ -95,19 +99,19 @@ def test_build_sensor_items_daily_with_price_adds_cost_item():
     assert cost_item["unique_id"].endswith("_cost")
 
 
-def test_build_sensor_items_detail_without_intervals_is_single_bucket():
+def test_build_sensor_items_detail_without_intervals_is_single_bucket(hass):
     """Detail service without offpeak intervals behaves like a daily service."""
     items = build_sensor_items(
-        CONF_CONSUMPTION, PDL, DETAIL_CONSUM, [], has_price=False
+        hass, CONF_CONSUMPTION, PDL, DETAIL_CONSUM, [], has_price=False
     )
     assert len(items) == 1
     assert items[0]["note"] == ATTR_STANDARD
 
 
-def test_build_sensor_items_detail_with_intervals_splits_std_offpeak():
+def test_build_sensor_items_detail_with_intervals_splits_std_offpeak(hass):
     """Detail service with offpeak intervals yields standard + offpeak buckets."""
     items = build_sensor_items(
-        CONF_CONSUMPTION,
+        hass, CONF_CONSUMPTION,
         PDL,
         DETAIL_CONSUM,
         [("01:00:00", "06:00:00")],
@@ -247,7 +251,9 @@ async def test_async_get_db_infos_returns_last_sum(recorder_mock, hass):
 
 async def test_async_get_last_infos_splits_energy_and_cost(recorder_mock, hass):
     """Energy items feed sum_values/last date, cost items feed sum_prices only."""
-    items = build_sensor_items(CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=True)
+    items = build_sensor_items(
+        hass, CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=True
+    )
     energy_item = next(item for item in items if item["kind"] == "energy")
     cost_item = next(item for item in items if item["kind"] == "cost")
 
@@ -274,7 +280,9 @@ async def test_async_import_sensor_statistics_writes_energy_and_cost(
     recorder_mock, hass
 ):
     """Rows matching an item's mode/note/kind get imported onto its entity."""
-    items = build_sensor_items(CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=True)
+    items = build_sensor_items(
+        hass, CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=True
+    )
     energy_item = next(item for item in items if item["kind"] == "energy")
     cost_item = next(item for item in items if item["kind"] == "cost")
     start = dt_util.utc_from_timestamp(0)
@@ -307,7 +315,9 @@ async def test_async_import_sensor_statistics_skips_items_without_rows(
     recorder_mock, hass
 ):
     """Items with no matching data don't raise and simply import nothing."""
-    items = build_sensor_items(CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False)
+    items = build_sensor_items(
+        hass, CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False
+    )
     last_stats = await async_import_sensor_statistics(hass, items, {})
     await async_wait_recording_done(hass)
     assert last_stats == {}
@@ -323,7 +333,9 @@ async def test_async_import_sensor_statistics_skips_items_without_rows(
 
 async def test_async_migrate_legacy_statistics_copies_history(recorder_mock, hass):
     """Legacy external statistics get copied onto the new entity id."""
-    items = build_sensor_items(CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False)
+    items = build_sensor_items(
+        hass, CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False
+    )
     item = items[0]
     legacy_id = _legacy_statistic_id(item)
 
@@ -357,7 +369,9 @@ async def test_async_migrate_legacy_statistics_skips_when_already_populated(
     recorder_mock, hass
 ):
     """If the new entity already has data, nothing is migrated."""
-    items = build_sensor_items(CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False)
+    items = build_sensor_items(
+        hass, CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False
+    )
     item = items[0]
     start = dt_util.utc_from_timestamp(0)
     await _import_metadata(
@@ -375,7 +389,9 @@ async def test_async_migrate_legacy_statistics_no_legacy_data_is_noop(
     recorder_mock, hass
 ):
     """No legacy statistics found: function returns without error."""
-    items = build_sensor_items(CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False)
+    items = build_sensor_items(
+        hass, CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False
+    )
     await async_migrate_legacy_statistics(hass, items)
     await async_wait_recording_done(hass)
     summary, last_dt = await async_get_db_infos(hass, items[0]["entity_id"])
@@ -390,7 +406,9 @@ async def test_async_migrate_legacy_statistics_no_legacy_data_is_noop(
 
 async def test_async_rebuild_statistics_recomputes_running_total(recorder_mock, hass):
     """Rebuild replaces the stored sum with a clean running total from state."""
-    items = build_sensor_items(CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False)
+    items = build_sensor_items(
+        hass, CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False
+    )
     item = items[0]
     start1 = dt_util.utc_from_timestamp(10 * 86400)
     start2 = dt_util.utc_from_timestamp(10 * 86400 + 3600)
@@ -414,7 +432,9 @@ async def test_async_rebuild_statistics_recomputes_running_total(recorder_mock, 
 
 async def test_async_rebuild_statistics_no_data_is_noop(recorder_mock, hass):
     """Rebuilding an entity with no history at all does not raise."""
-    items = build_sensor_items(CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False)
+    items = build_sensor_items(
+        hass, CONF_CONSUMPTION, PDL, DAILY_CONSUM, [], has_price=False
+    )
     final_sums = await async_rebuild_statistics(hass, items)
     await async_wait_recording_done(hass)
     assert final_sums == {}

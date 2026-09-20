@@ -26,7 +26,7 @@ from custom_components.myelectricaldata.services import async_services
 def _make_api_mock() -> MagicMock:
     api = MagicMock()
     api.set_data_fetch = MagicMock()
-    api.async_update_collects = AsyncMock()
+    api.async_update = AsyncMock()
     api.has_collected = True
     api.stats = {}
     return api
@@ -91,7 +91,7 @@ async def test_reload_history_uses_explicit_price_and_imports_statistics(
             blocking=True,
         )
 
-    api.async_update_collects.assert_awaited_once()
+    api.async_update.assert_awaited_once()
     mock_import.assert_awaited_once()
     mock_rebuild.assert_awaited_once()
     prices = api.set_data_fetch.call_args.kwargs["prices"]
