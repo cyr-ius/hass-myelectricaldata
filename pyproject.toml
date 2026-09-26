@@ -12,7 +12,7 @@ packages = []
 
 [dependency-groups]
 dev = [
-  "myelectricaldatapy==2.5.0",
+  "myelectricaldatapy==2.5.1",
   "prek",
   "pytest-homeassistant-custom-component",
   "pytest-asyncio",
