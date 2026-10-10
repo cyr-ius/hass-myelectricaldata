@@ -111,7 +111,8 @@ def test_build_sensor_items_detail_without_intervals_is_single_bucket(hass):
 def test_build_sensor_items_detail_with_intervals_splits_std_offpeak(hass):
     """Detail service with offpeak intervals yields standard + offpeak buckets."""
     items = build_sensor_items(
-        hass, CONF_CONSUMPTION,
+        hass,
+        CONF_CONSUMPTION,
         PDL,
         DETAIL_CONSUM,
         [("01:00:00", "06:00:00")],
