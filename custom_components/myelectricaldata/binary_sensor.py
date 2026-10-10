@@ -29,7 +29,7 @@ class MyElectricalBinarySensorEntityDescription(BinarySensorEntityDescription):
     """Describes MyElectricalData binary sensor entity."""
 
     cls: Callable[
-        [EnedisDataUpdateCoordinator, "MyElectricalBinarySensorEntityDescription"],
+        [EnedisDataUpdateCoordinator, MyElectricalBinarySensorEntityDescription],
         BinarySensorEntity,
     ]
     subscriptions: Subscription | None = None

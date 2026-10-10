@@ -217,10 +217,7 @@ async def test_async_update_data_uses_tempo_prices_for_tempo_subscription(
         for call in api.set_data_fetch.call_args_list
         if call.kwargs["service"] == DAILY_CONSUM
     )
-    assert (
-        consumption_call.kwargs["prices"]
-        == DEFAULT_CONSUMPTION_TEMPO["prices"]
-    )
+    assert consumption_call.kwargs["prices"] == DEFAULT_CONSUMPTION_TEMPO["prices"]
 
 
 async def test_async_update_data_migrates_legacy_stats_once(recorder_mock, coordinator):

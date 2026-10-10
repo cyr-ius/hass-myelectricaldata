@@ -52,7 +52,7 @@ def _fake_coordinator(*, api=None, intervals=None):
         api=api or _fake_api(),
         config_entry=SimpleNamespace(options=options),
         last_update_success=True,
-        async_add_listener=lambda *args, **kwargs: (lambda: None),
+        async_add_listener=lambda *args, **kwargs: lambda: None,
     )
 
 
@@ -91,9 +91,7 @@ async def test_async_setup_entry_hphc_adds_both():
 def test_countdown_sensor_on_when_access_invalid_and_no_expiration():
     """No expiration date: the sensor mirrors ``access.valid is False``."""
     coordinator = _fake_coordinator(
-        api=_fake_api(
-            access=SimpleNamespace(consent_expiration_date=None, valid=False)
-        )
+        api=_fake_api(access=SimpleNamespace(consent_expiration_date=None, valid=False))
     )
     sensor = CountdownSensor(coordinator, DESCRIPTIONS["access_token"])
     assert sensor._attr_is_on is True

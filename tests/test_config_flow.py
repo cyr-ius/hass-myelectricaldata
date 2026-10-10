@@ -115,9 +115,7 @@ async def test_user_step_creates_entry(hass, pdl):
     assert result["options"][CONF_CONSUMPTION][CONF_SERVICE] == "daily_consumption"
 
 
-async def test_user_step_connection_error_shows_form_with_error(
-    hass, pdl, mock_enedis
-):
+async def test_user_step_connection_error_shows_form_with_error(hass, pdl, mock_enedis):
     """A connection failure surfaces cannot_connect and re-shows the form."""
     mock_enedis.async_has_access = AsyncMock(
         side_effect=EnedisException(500, {"detail": "boom"})
