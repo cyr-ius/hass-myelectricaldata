@@ -1,3 +1,4 @@
+---
 # Enedis service.
 fetch_data:
   name: Fetch data
@@ -70,13 +71,17 @@ clear_data:
             domain: sensor
     start_date:
       name: Start Date
-      description: Only clear data from this date onward. Leave empty with no end date to clear all data.
+      description: >-
+        Only clear data from this date onward.
+        Leave empty with no end date to clear all data.
       required: false
       selector:
         date:
     end_date:
       name: End Date
-      description: Only clear data up to (but excluding) this date. Leave empty with no start date to clear all data.
+      description: >-
+        Only clear data up to (but excluding) this date.
+        Leave empty with no start date to clear all data.
       required: false
       selector:
         date:
@@ -84,7 +89,9 @@ clear_data:
 # Enedis service.
 rebuild_data:
   name: Rebuild data
-  description: Recompute a statistic's cumulative sum from its own local history (no Enedis API call)
+  description: >-
+    Recompute a statistic's cumulative sum from its own local history
+    (no Enedis API call)
   fields:
     statistic_id:
       name: Statistic Id
