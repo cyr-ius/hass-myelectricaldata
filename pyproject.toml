@@ -11,12 +11,12 @@ dependencies = []
 packages = []
 
 [dependency-groups]
+lint = ["prek"]
 dev = [
   "myelectricaldatapy==2.5.1",
-  "prek",
+  {include-group = "lint"},
   "pytest-homeassistant-custom-component",
   "pytest-asyncio",
-  "python-typing-update",
 ]
 
 [tool.pytest.ini_options]
@@ -32,9 +32,14 @@ log_cli = true
 package = false
 
 [tool.ruff]
-target-version = "py313"
+fix = true
+target-version = "py314"
 line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 
+[tool.codespell]
+ignore-words-list = "hass"
+skip = "./.*,*.csv,*.json,uv.lock"
+quiet-level = 2
