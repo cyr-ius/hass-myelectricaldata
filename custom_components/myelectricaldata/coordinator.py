@@ -1,7 +1,7 @@
 """Data Update Coordinator."""
 
 import logging
-from datetime import UTC, timedelta
+from datetime import UTC, date, timedelta
 from datetime import datetime as dt
 from typing import Any
 
@@ -20,6 +20,9 @@ from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 from myelectricaldatapy import (
+    DAILY_CONSUM,
+    DAILY_PROD,
+    Enedis,
     EnedisByPDL,
     EnedisException,
     EnergyCollect,
@@ -62,7 +65,27 @@ from .helpers import (
 
 SCAN_INTERVAL = timedelta(hours=3)
 
+# Enedis rejects any daily request starting before the meter (re)activation
+# with this message (ADAM-ERR0123).
+ACTIVATION_ERROR = "last activation date"
+
 _LOGGER = logging.getLogger(__name__)
+
+
+def _is_activation_error(error: EnedisException) -> bool:
+    """Return True when Enedis refused a period older than the meter activation."""
+    return ACTIVATION_ERROR in str(error).lower()
+
+
+def _parse_activation_date(value: str | None) -> date | None:
+    """Parse a contract date such as ``2015-10-12+02:00``."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        _LOGGER.debug("Could not parse activation date: %s", value)
+        return None
 
 
 def _parse_next_access_time(value: str | None) -> dt | None:
@@ -94,6 +117,9 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         self.last_stat: dt | None = None
         self.pdl: str = config_entry.data[CONF_PDL]
         self._migrated_legacy_stats = False
+        # Earliest start date Enedis accepted for each daily service, learnt
+        # by _async_probe_first_accepted_date after an activation date error.
+        self._start_floor: dict[str, date] = {}
         self._throttle_retry_unsub: CALLBACK_TYPE | None = None
 
         super().__init__(
@@ -298,6 +324,106 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             self.hass, self.async_request_refresh(), "throttle-retry"
         )
 
+    def _start_floor_for(self, service: str) -> date | None:
+        """Return the earliest date a collection for ``service`` may start at.
+
+        Combines the contract's last activation date with whatever earlier
+        probing learnt (the contract value may lag behind a meter swap).
+        """
+        floors = [
+            floor
+            for floor in (
+                _parse_activation_date(
+                    self.api.contract.last_activation_date
+                    if self.api.contract is not None
+                    else None
+                ),
+                self._start_floor.get(service),
+            )
+            if floor is not None
+        ]
+        return max(floors) if floors else None
+
+    async def _async_handle_activation_error(self, requested: dict[str, dt]) -> None:
+        """Unstick a collection Enedis refuses because it starts too early.
+
+        Without this, every refresh requests the same rejected period again
+        and no data is ever imported anymore (issue #143).
+        """
+        learnt = False
+        for service, start in requested.items():
+            if service not in (DAILY_CONSUM, DAILY_PROD):
+                continue
+            try:
+                floor = await self._async_probe_first_accepted_date(
+                    service, start.date()
+                )
+            except EnedisException as error:
+                _LOGGER.warning("Could not probe %s start date: %s", service, error)
+                return
+            if floor is None or floor <= start.date():
+                continue
+            _LOGGER.warning(
+                "Enedis refuses %s data before %s (meter activation), "
+                "collection restarts from that date",
+                service,
+                floor,
+            )
+            self._start_floor[service] = floor
+            learnt = True
+
+        if learnt:
+            # Collect from the new start shortly instead of in SCAN_INTERVAL.
+            self._cancel_throttle_retry()
+            self._throttle_retry_unsub = async_track_point_in_time(
+                self.hass,
+                self._async_throttle_retry,
+                dt_util.utcnow() + timedelta(minutes=1),
+            )
+
+    async def _async_probe_first_accepted_date(
+        self, service: str, start: date
+    ) -> date | None:
+        """Binary search the first day Enedis accepts for ``service``.
+
+        Enedis rejects every period starting before the meter activation and
+        accepts every period after it, so a one-day request per step finds
+        the boundary in about log2(days) calls. Returns None when ``start``
+        is already accepted, and today when even yesterday is refused.
+        """
+        client = Enedis(
+            self.config_entry.options[CONF_AUTH][CONF_TOKEN],
+            async_create_clientsession(self.hass),
+        )
+
+        async def accepted(day: date) -> bool:
+            begin = dt.combine(day, dt.min.time())
+            try:
+                await client.async_fetch_datas(
+                    service, self.pdl, begin, begin + timedelta(days=1)
+                )
+            except LimitReached:
+                raise
+            except EnedisException as error:
+                if _is_activation_error(error):
+                    return False
+            return True
+
+        low = start
+        high = dt_util.now().date() - timedelta(days=1)
+        if low > high or await accepted(low):
+            return None
+        if not await accepted(high):
+            return high + timedelta(days=1)
+        # Invariant: low is refused, high is accepted.
+        while (high - low).days > 1:
+            middle = low + timedelta(days=(high - low).days // 2)
+            if await accepted(middle):
+                high = middle
+            else:
+                low = middle
+        return high
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via API."""
         self._cancel_throttle_retry()
@@ -314,6 +440,8 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
         items: list[dict[str, Any]] = []
+        # Start of each period handed to the library this cycle, per service.
+        requested: dict[str, dt] = {}
         for mode, opt in dict_opts.items():
             service: EnergyCollect = opt.get(CONF_SERVICE)
             intervals = [
@@ -337,6 +465,8 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             )
 
             collect_start = next_date(dt_start, service)
+            if (floor := self._start_floor_for(service)) is not None:
+                collect_start = max(collect_start, dt.combine(floor, dt.min.time()))
             if collect_start.date() < dt_util.now().date():
                 # The API only ever publishes up to yesterday's data, so a
                 # start date of today or later can never return anything:
@@ -346,6 +476,7 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
                 # range into its own 7-day sub-requests, so a catch-up gap
                 # is closed in this single refresh instead of one 7-day
                 # chunk per SCAN_INTERVAL.
+                requested[service] = collect_start
                 self.api.set_data_fetch(
                     service=service,
                     start=collect_start,
@@ -374,6 +505,8 @@ class EnedisDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Limit reached: %s", error)
         except EnedisException as error:
             _LOGGER.error("Error to update data: %s", error)
+            if _is_activation_error(error):
+                await self._async_handle_activation_error(requested)
         else:
             self._async_sync_offpeak_intervals()
 

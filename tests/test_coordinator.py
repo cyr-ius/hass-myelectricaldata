@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import UTC
+from datetime import UTC, date, timedelta
 from datetime import datetime as dt
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.const import CONF_ENTITY_ID
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.util import dt as dt_util
 from myelectricaldatapy import (
     ATTR_HPHC,
     ATTR_INTERVALS,
@@ -370,3 +371,116 @@ async def test_sync_offpeak_noop(hass, coordinator, config_entry, subscription, 
     )
     assert _issue(hass, config_entry, ISSUE_OFFPEAK_UPDATED) is None
     assert _issue(hass, config_entry, ISSUE_OFFPEAK_MISMATCH) is None
+
+
+# ---------------------------------------------------------------------------
+# Activation date handling (issue #143)
+# ---------------------------------------------------------------------------
+
+ACTIVATION_MSG = (
+    "The requested period cannot be anterior to the meter's last activation date"
+)
+
+
+def _fake_enedis(activation: date) -> MagicMock:
+    """Return an Enedis client refusing any period starting before activation."""
+
+    async def fetch(service, pdl, start, end):
+        if start.date() < activation:
+            raise EnedisException(ACTIVATION_MSG)
+        return {}
+
+    client = MagicMock()
+    client.async_fetch_datas = AsyncMock(side_effect=fetch)
+    return client
+
+
+async def test_probe_finds_first_accepted_date(recorder_mock, coordinator):
+    """The binary search lands exactly on the activation day."""
+    today = dt_util.now().date()
+    activation = today - timedelta(days=17)
+    client = _fake_enedis(activation)
+    with patch(
+        "custom_components.myelectricaldata.coordinator.Enedis", return_value=client
+    ):
+        floor = await coordinator._async_probe_first_accepted_date(
+            DAILY_CONSUM, today - timedelta(days=1094)
+        )
+
+    assert floor == activation
+    assert client.async_fetch_datas.await_count <= 13
+
+
+async def test_probe_returns_none_when_start_accepted(recorder_mock, coordinator):
+    """No floor is learnt when the requested start is already accepted."""
+    today = dt_util.now().date()
+    client = _fake_enedis(today - timedelta(days=100))
+    with patch(
+        "custom_components.myelectricaldata.coordinator.Enedis", return_value=client
+    ):
+        floor = await coordinator._async_probe_first_accepted_date(
+            DAILY_CONSUM, today - timedelta(days=10)
+        )
+
+    assert floor is None
+    assert client.async_fetch_datas.await_count == 1
+
+
+async def test_probe_returns_today_when_yesterday_refused(recorder_mock, coordinator):
+    """A meter activated today makes every past period unavailable."""
+    today = dt_util.now().date()
+    with patch(
+        "custom_components.myelectricaldata.coordinator.Enedis",
+        return_value=_fake_enedis(today),
+    ):
+        floor = await coordinator._async_probe_first_accepted_date(
+            DAILY_CONSUM, today - timedelta(days=30)
+        )
+
+    assert floor == today
+
+
+async def test_activation_error_moves_next_start(recorder_mock, coordinator):
+    """After an activation error, the next cycle starts at the learnt date."""
+    today = dt_util.now().date()
+    activation = today - timedelta(days=5)
+    api = _make_api_mock()
+    api.async_update = AsyncMock(side_effect=EnedisException(ACTIVATION_MSG))
+    coordinator.api = api
+
+    with (
+        patch(
+            "custom_components.myelectricaldata.coordinator.Enedis",
+            return_value=_fake_enedis(activation),
+        ),
+        patch(
+            "custom_components.myelectricaldata.coordinator.async_track_point_in_time",
+            return_value=lambda: None,
+        ) as mock_track,
+    ):
+        await coordinator._async_update_data()
+
+    assert coordinator._start_floor[DAILY_CONSUM] == activation
+    mock_track.assert_called_once()
+
+    api.async_update = AsyncMock()
+    api.set_data_fetch.reset_mock()
+    await coordinator._async_update_data()
+    starts = {
+        call.kwargs["service"]: call.kwargs["start"]
+        for call in api.set_data_fetch.call_args_list
+    }
+    assert starts[DAILY_CONSUM].date() == activation
+
+
+async def test_contract_activation_date_bounds_start(recorder_mock, coordinator):
+    """The collection never starts before the contract's last activation date."""
+    activation = dt_util.now().date() - timedelta(days=20)
+    api = _make_api_mock()
+    api.contract = MagicMock(last_activation_date=f"{activation.isoformat()}+02:00")
+    coordinator.api = api
+
+    await coordinator._async_update_data()
+
+    for call in api.set_data_fetch.call_args_list:
+        assert call.kwargs["start"].date() == activation
