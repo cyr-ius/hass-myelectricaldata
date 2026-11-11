@@ -13,7 +13,7 @@ packages = []
 [dependency-groups]
 lint = ["prek"]
 dev = [
-  "myelectricaldatapy==2.5.2",
+  "myelectricaldatapy==2.5.3",
   {include-group = "lint"},
   "pytest-homeassistant-custom-component",
   "pytest-asyncio",
