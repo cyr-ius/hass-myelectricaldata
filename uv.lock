@@ -1145,7 +1145,7 @@ lint = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "myelectricaldatapy", specifier = "==2.5.2" },
+    { name = "myelectricaldatapy", specifier = "==2.5.3" },
     { name = "prek" },
     { name = "pytest-asyncio" },
     { name = "pytest-homeassistant-custom-component" },
@@ -1568,16 +1568,16 @@ wheels = [
 
 [[package]]
 name = "myelectricaldatapy"
-version = "2.5.2"
+version = "2.5.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "pandas" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/93/d1/38dd03f2de1ad60b06d335543c9c18aa6bb2e7785e3cdd83ebe8e29029a5/myelectricaldatapy-2.5.2.tar.gz", hash = "sha256:297aceb8fc9424e0437354de5f98489922928f9a8a018ce9ac17528207089077", size = 136656, upload-time = "2026-11-01T11:38:05.53Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/88/d2/c9d7097826e216856513eeb852458028840e08e11683163a52369d14c82f/myelectricaldatapy-2.5.3.tar.gz", hash = "sha256:02acad6bbe215df83b4617aefd1df7c183b22a9e09961d317489493a4aee08b2", size = 140735, upload-time = "2026-11-11T11:38:58.755Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/27/b4/01663b8169f821808bb812b3dbe05e249ab7709fb514955cb4a76a04f523/myelectricaldatapy-2.5.2-py3-none-any.whl", hash = "sha256:16589674bec8305385a93e423fea1c51c48a8111f14aeff16a46964758519a6d", size = 35268, upload-time = "2026-11-01T11:38:03.922Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/3f/3f284c72b3c4ea7bb0c950cdc31a9ccb503726c1ebf12bf7c5f706c688bf/myelectricaldatapy-2.5.3-py3-none-any.whl", hash = "sha256:5b2cbfde44f62403231ccbbd6eee1e90cfd0d59cf94270be46557ae3a3ee2be9", size = 35892, upload-time = "2026-11-11T11:38:57.171Z" },
 ]
 
 [[package]]
